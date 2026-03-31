@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find C:/Users/cdelm/Documents/B3/FIL-ROUGE/K-별/backend/src/auth -type f -name *.ts)"
+    ]
+  }
+}
