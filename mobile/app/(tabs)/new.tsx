@@ -2,10 +2,10 @@ import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 
-export default function IndexScreen() {
+export default function NewScreen() {
   return (
     <View style={styles.container}>
-      <ThemedText type="title">Index</ThemedText>
+      <ThemedText type="title">New</ThemedText>
     </View>
   );
 }

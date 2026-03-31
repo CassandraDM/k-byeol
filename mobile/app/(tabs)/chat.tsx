@@ -2,10 +2,10 @@ import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 
-export default function IndexScreen() {
+export default function ChatScreen() {
   return (
     <View style={styles.container}>
-      <ThemedText type="title">Index</ThemedText>
+      <ThemedText type="title">Chat</ThemedText>
     </View>
   );
 }
