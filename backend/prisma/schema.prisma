@@ -13,7 +13,7 @@ datasource db {
 
 model User {
   id        Int      @id @default(autoincrement())
-  username  String   @unique @db.VarChar(50)
+  username  String   @unique @db.VarChar(50) // min 2 chars enforced at DTO level
   email     String   @unique @db.VarChar(100)
   password  String   @db.VarChar(255)
   avatar    String?  @db.VarChar(255)
