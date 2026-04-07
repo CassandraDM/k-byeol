@@ -27,6 +27,21 @@ export const Colors = {
   },
 };
 
+/** Brand colour palette */
+export const Palette = {
+  white:  '#E7FCFE',
+  purple: '#CF7EF2',
+  pink:   '#D083EF',
+} as const;
+
+/** Custom app fonts loaded via expo-font in app/_layout.tsx */
+export const CustomFonts = {
+  /** Cafe24 Syongsyong — playful handwritten Korean/Latin */
+  syongsyong: 'Syongsyong',
+  /** Cafe24 Moyamoya — soft rounded Korean/Latin */
+  moyamoya: 'Moyamoya',
+} as const;
+
 export const Fonts = Platform.select({
   ios: {
     /** iOS `UIFontDescriptorSystemDesignDefault` */
