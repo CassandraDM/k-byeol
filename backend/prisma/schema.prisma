@@ -22,5 +22,46 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  preferences UserPreferences?
+
   @@map("users")
+}
+
+model KpopGroup {
+  id   Int    @id @default(autoincrement())
+  name String @unique @db.VarChar(100)
+  slug String @unique @db.VarChar(100)
+
+  userPreferences UserPreferencesGroup[]
+
+  @@map("kpop_groups")
+}
+
+model UserPreferences {
+  id     Int @id @default(autoincrement())
+  userId Int @unique @map("user_id")
+
+  // City from geo.api.gouv.fr
+  cityCode       String? @map("city_code") @db.VarChar(10)
+  cityName       String? @map("city_name") @db.VarChar(255)
+  cityPostalCode String? @map("city_postal_code") @db.VarChar(10)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user   User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groups UserPreferencesGroup[]
+
+  @@map("user_preferences")
+}
+
+model UserPreferencesGroup {
+  preferencesId Int @map("preferences_id")
+  groupId       Int @map("group_id")
+
+  preferences UserPreferences @relation(fields: [preferencesId], references: [id], onDelete: Cascade)
+  group       KpopGroup       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([preferencesId, groupId])
+  @@map("user_preferences_groups")
 }
