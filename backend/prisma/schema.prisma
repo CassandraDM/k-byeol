@@ -22,7 +22,9 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  preferences UserPreferences?
+  preferences     UserPreferences?
+  organizedEvents Event[]              @relation("OrganizedEvents")
+  participations  EventParticipation[]
 
   @@map("users")
 }
@@ -53,6 +55,46 @@ model UserPreferences {
   groups UserPreferencesGroup[]
 
   @@map("user_preferences")
+}
+
+enum EventType {
+  RANDOM_PLAY_DANCE
+  FESTIVAL
+  ON_STAGE
+  IN_PUBLIC
+}
+
+model Event {
+  id          Int       @id @default(autoincrement())
+  title       String    @db.VarChar(255)
+  type        EventType
+  latitude    Float
+  longitude   Float
+  address     String    @db.VarChar(500)
+  date        DateTime  @db.Date
+  time        String    @db.VarChar(10)
+  description String
+  imageUrl    String?   @map("image_url") @db.VarChar(500)
+  organizerId Int       @map("organizer_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  organizer      User               @relation("OrganizedEvents", fields: [organizerId], references: [id], onDelete: Cascade)
+  participations EventParticipation[]
+
+  @@map("events")
+}
+
+model EventParticipation {
+  userId    Int      @map("user_id")
+  eventId   Int      @map("event_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@id([userId, eventId])
+  @@map("event_participations")
 }
 
 model UserPreferencesGroup {
