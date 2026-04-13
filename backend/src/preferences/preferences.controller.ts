@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { PreferencesService } from './preferences.service';
 import { UpdatePreferencesDto } from './dto/update-preferences.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -27,5 +27,14 @@ export class PreferencesController {
   @Get('/groups')
   getAllGroups() {
     return this.preferencesService.getAllGroups();
+  }
+
+  @Post('/groups/request')
+  requestGroup(
+    @Req() req: Request,
+    @Body() body: { name: string },
+  ) {
+    const user = req['user'] as { id: number };
+    return this.preferencesService.requestGroup(user.id, body.name);
   }
 }

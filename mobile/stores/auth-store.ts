@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import * as SecureStore from "expo-secure-store";
 import { API_URL } from "@/constants/api";
+import { useOnboardingStore } from "@/stores/onboarding-store";
 
 // Maps raw class-validator messages to user-friendly ones
 const VALIDATION_MAP: Record<string, string> = {
@@ -23,17 +24,20 @@ function parseValidationErrors(messages: string[]): string {
 }
 
 const JWT_KEY = "kbyeol_jwt";
+const ONBOARDING_KEY = "kbyeol_onboarding_done";
 
 interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
   isNewUser: boolean;
+  hasCompletedOnboarding: boolean;
   isLoading: boolean;
   error: string | null;
   hydrate: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (username: string, email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  setOnboardingComplete: () => Promise<void>;
   clearError: () => void;
 }
 
@@ -41,14 +45,20 @@ export const useAuthStore = create<AuthState>((set) => ({
   token: null,
   isAuthenticated: false,
   isNewUser: false,
+  hasCompletedOnboarding: false,
   isLoading: false,
   error: null,
 
   hydrate: async () => {
     try {
       const token = await SecureStore.getItemAsync(JWT_KEY);
+      const onboardingDone = await SecureStore.getItemAsync(ONBOARDING_KEY);
       if (token) {
-        set({ token, isAuthenticated: true });
+        set({
+          token,
+          isAuthenticated: true,
+          hasCompletedOnboarding: onboardingDone === "true",
+        });
       }
     } catch {
       // Token not found or unreadable — stay unauthenticated
@@ -154,7 +164,14 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   signOut: async () => {
     await SecureStore.deleteItemAsync(JWT_KEY);
-    set({ token: null, isAuthenticated: false, isNewUser: false, error: null });
+    await SecureStore.deleteItemAsync(ONBOARDING_KEY);
+    useOnboardingStore.getState().reset();
+    set({ token: null, isAuthenticated: false, isNewUser: false, hasCompletedOnboarding: false, error: null });
+  },
+
+  setOnboardingComplete: async () => {
+    await SecureStore.setItemAsync(ONBOARDING_KEY, "true");
+    set({ hasCompletedOnboarding: true, isNewUser: false });
   },
 
   clearError: () => set({ error: null }),

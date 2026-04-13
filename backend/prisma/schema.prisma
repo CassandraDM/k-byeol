@@ -28,6 +28,7 @@ model User {
   conversations      ConversationParticipant[]
   messages           Message[]
   ownedConversations Conversation[]           @relation("OwnedConversations")
+  groupRequests      GroupRequest[]
 
   @@map("users")
 }
@@ -40,6 +41,18 @@ model KpopGroup {
   userPreferences UserPreferencesGroup[]
 
   @@map("kpop_groups")
+}
+
+model GroupRequest {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(100)
+  userId    Int      @map("user_id")
+  status    String   @default("pending") @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("group_requests")
 }
 
 model UserPreferences {
