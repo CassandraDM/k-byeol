@@ -1,22 +1,45 @@
 import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 import { ThemedText } from '@/components/themed-text';
-import { CustomFonts } from '@/constants/theme';
+import { CustomFonts, Palette } from '@/constants/theme';
 import { useAuthStore } from '@/stores/auth-store';
+import { useOnboardingStore } from '@/stores/onboarding-store';
 
 export default function AccountScreen() {
   const router = useRouter();
-  const { signOut } = useAuthStore();
+  const { signOut, hasCompletedOnboarding } = useAuthStore();
 
   const handleLogout = async () => {
     await signOut();
     router.replace('/(auth)/sign-in' as any);
   };
 
+  const handleCompleteProfile = () => {
+    router.push('/(onboarding)' as any);
+  };
+
   return (
     <View style={styles.container}>
       <ThemedText type="title">Account</ThemedText>
+
+      {!hasCompletedOnboarding && (
+        <Pressable
+          style={({ pressed }) => [styles.noticeCard, pressed && styles.buttonPressed]}
+          onPress={handleCompleteProfile}>
+          <View style={styles.noticeContent}>
+            <Ionicons name="alert-circle-outline" size={22} color={Palette.purple} />
+            <View style={{ flex: 1 }}>
+              <ThemedText style={styles.noticeTitle}>Complete your profile</ThemedText>
+              <ThemedText style={styles.noticeSubtitle}>
+                Add your picture, city & favorite groups
+              </ThemedText>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={Palette.purple} />
+          </View>
+        </Pressable>
+      )}
 
       <Pressable
         style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
@@ -34,6 +57,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'transparent',
     gap: 32,
+    paddingHorizontal: 24,
+  },
+  noticeCard: {
+    width: '100%',
+    backgroundColor: 'rgba(207, 126, 242, 0.1)',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: Palette.purple,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  noticeContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  noticeTitle: {
+    fontFamily: CustomFonts.syongsyong,
+    fontSize: 16,
+    color: Palette.purple,
+  },
+  noticeSubtitle: {
+    fontFamily: CustomFonts.moyamoya,
+    fontSize: 12,
+    color: Palette.pink,
+    marginTop: 2,
   },
   button: {
     backgroundColor: '#7B2FBE',

@@ -98,4 +98,19 @@ export class PreferencesService {
       orderBy: { name: 'asc' },
     });
   }
+
+  async requestGroup(userId: number, name: string) {
+    if (!name?.trim()) {
+      throw new BadRequestException('Group name is required');
+    }
+
+    const request = await this.prisma.groupRequest.create({
+      data: {
+        name: name.trim(),
+        userId,
+      },
+    });
+
+    return { message: 'Group request submitted', id: request.id };
+  }
 }

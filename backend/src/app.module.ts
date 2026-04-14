@@ -7,9 +7,10 @@ import { PreferencesModule } from './preferences/preferences.module';
 import { EventsModule } from './events/events.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { ChatModule } from './chat/chat.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, PreferencesModule, EventsModule, ConversationsModule, ChatModule],
+  imports: [PrismaModule, AuthModule, PreferencesModule, EventsModule, ConversationsModule, ChatModule, UsersModule],
   controllers: [AppController],
   providers: [AppService],
 })
