@@ -30,7 +30,7 @@ export class EventsService {
     return event;
   }
 
-  async findByLocation(lat: number, lng: number, radius: number) {
+  async findByLocation(lat: number, lng: number, radius: number, userId: number) {
     const events = await this.prisma.$queryRaw<
       Array<{
         id: number;
@@ -67,6 +67,16 @@ export class EventsService {
       ORDER BY distance
     `);
 
+    // Check participation for all returned events in one query
+    const eventIds = events.map((e) => e.id);
+    const participations = eventIds.length
+      ? await this.prisma.eventParticipation.findMany({
+          where: { userId, eventId: { in: eventIds } },
+          select: { eventId: true },
+        })
+      : [];
+    const participatingIds = new Set(participations.map((p) => p.eventId));
+
     return events.map((e) => ({
       id: e.id,
       title: e.title,
@@ -80,11 +90,12 @@ export class EventsService {
       imageUrl: e.image_url,
       organizerId: e.organizer_id,
       distance: Math.round(e.distance * 100) / 100,
+      isParticipating: participatingIds.has(e.id),
       createdAt: e.created_at,
     }));
   }
 
-  async findById(id: number) {
+  async findById(id: number, userId: number) {
     const event = await this.prisma.event.findUnique({
       where: { id },
       include: {
@@ -92,6 +103,10 @@ export class EventsService {
           select: { id: true, username: true, avatar: true },
         },
         _count: { select: { participations: true } },
+        participations: {
+          where: { userId },
+          select: { userId: true },
+        },
       },
     });
 
@@ -112,6 +127,7 @@ export class EventsService {
       imageUrl: event.imageUrl,
       organizer: event.organizer,
       participantCount: event._count.participations,
+      isParticipating: event.participations.length > 0,
       createdAt: event.createdAt,
     };
   }
