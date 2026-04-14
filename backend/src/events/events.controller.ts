@@ -28,13 +28,15 @@ export class EventsController {
   }
 
   @Get()
-  findByLocation(@Query() query: QueryEventsDto) {
-    return this.eventsService.findByLocation(query.lat, query.lng, query.radius ?? 10);
+  findByLocation(@Req() req: Request, @Query() query: QueryEventsDto) {
+    const user = req['user'] as { id: number };
+    return this.eventsService.findByLocation(query.lat, query.lng, query.radius ?? 10, user.id);
   }
 
   @Get(':id')
-  findById(@Param('id', ParseIntPipe) id: number) {
-    return this.eventsService.findById(id);
+  findById(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
+    const user = req['user'] as { id: number };
+    return this.eventsService.findById(id, user.id);
   }
 
   @Post(':id/participate')

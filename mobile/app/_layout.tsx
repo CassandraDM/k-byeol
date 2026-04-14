@@ -41,6 +41,8 @@ export default function RootLayout() {
         <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
         {/* Main app */}
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        {/* Event detail */}
+        <Stack.Screen name="event/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
       <StatusBar style="auto" />
