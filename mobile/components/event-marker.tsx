@@ -66,7 +66,7 @@ export function EventMarker({ event, isSelected, onSelect }: EventMarkerProps) {
       <Ionicons
         name="star"
         size={38}
-        color={event.isParticipating ? Palette.purple : config.color}
+        color={event.isParticipating ? '#98D8C8' : Palette.purple}
         style={styles.marker}
       />
 
@@ -81,10 +81,17 @@ export function EventMarker({ event, isSelected, onSelect }: EventMarkerProps) {
               {event.title}
             </Text>
 
-            <View style={styles.cardRow}>
+            <View style={styles.badgeRow}>
               <View style={[styles.badge, { backgroundColor: config.color }]}>
+                <Ionicons name={config.icon} size={11} color="#fff" />
                 <Text style={styles.badgeText}>{config.label}</Text>
               </View>
+              {event.isParticipating && (
+                <View style={styles.participatingBadge}>
+                  <Ionicons name="checkmark-circle" size={11} color="#2ecc71" />
+                  <Text style={styles.participatingText}>Participating</Text>
+                </View>
+              )}
             </View>
 
             <View style={styles.cardRow}>
@@ -118,7 +125,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: '#EDE7FF',
     borderRadius: 14,
     padding: 12,
     width: 210,
@@ -139,17 +146,23 @@ const styles = StyleSheet.create({
     borderTopWidth: 10,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderTopColor: '#fff',
+    borderTopColor: '#EDE7FF',
   },
   cardTitle: {
-    fontFamily: CustomFonts.syongsyong,
+    fontFamily: CustomFonts.moyamoya,
     fontSize: 16,
-    color: '#1a1a2e',
+    color: Palette.purple,
   },
   cardRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
   },
   badge: {
     flexDirection: 'row',
@@ -157,17 +170,33 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 10,
+    borderRadius: 8,
   },
   badgeText: {
     fontFamily: CustomFonts.moyamoya,
     fontSize: 11,
     color: '#fff',
   },
+  participatingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(46, 204, 113, 0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(46, 204, 113, 0.3)',
+  },
+  participatingText: {
+    fontFamily: CustomFonts.moyamoya,
+    fontSize: 11,
+    color: '#2ecc71',
+  },
   cardMeta: {
     fontFamily: CustomFonts.moyamoya,
     fontSize: 12,
-    color: '#555',
+    color: Palette.pink,
   },
   cardFooter: {
     flexDirection: 'row',
