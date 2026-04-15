@@ -40,6 +40,10 @@ export const CustomFonts = {
   syongsyong: 'Syongsyong',
   /** Cafe24 Moyamoya — soft rounded Korean/Latin */
   moyamoya: 'Moyamoya',
+  /** Outfit — modern geometric sans-serif */
+  outfit: 'Outfit_400Regular',
+  outfitMedium: 'Outfit_500Medium',
+  outfitSemiBold: 'Outfit_600SemiBold',
 } as const;
 
 export const Fonts = Platform.select({
