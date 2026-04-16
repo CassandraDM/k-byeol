@@ -16,6 +16,16 @@ export default function IndexScreen() {
   const { token } = useAuthStore();
   const mapRef = useRef<MapView>(null);
 
+  // Current user id from JWT (used to mark events we organize)
+  const currentUserId = (() => {
+    if (!token) return null;
+    try {
+      return JSON.parse(atob(token.split('.')[1])).sub as number;
+    } catch {
+      return null;
+    }
+  })();
+
   const [coordinates, setCoordinates] = useState<{
     latitude: number;
     longitude: number;
@@ -130,6 +140,7 @@ export default function IndexScreen() {
             key={event.id}
             event={event}
             isSelected={selectedEventId === event.id}
+            isOwner={event.organizerId === currentUserId}
             onSelect={handleMarkerSelect}
           />
         ))}

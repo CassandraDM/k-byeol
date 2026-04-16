@@ -27,6 +27,7 @@ export interface MapEvent {
 interface EventMarkerProps {
   event: MapEvent;
   isSelected: boolean;
+  isOwner: boolean;
   onSelect: (event: MapEvent) => void;
 }
 
@@ -39,7 +40,7 @@ function formatDate(dateStr: string): string {
   });
 }
 
-export function EventMarker({ event, isSelected, onSelect }: EventMarkerProps) {
+export function EventMarker({ event, isSelected, isOwner, onSelect }: EventMarkerProps) {
   const config = EVENT_TYPE_CONFIG[event.type];
   const router = useRouter();
   const markerRef = useRef<any>(null);
@@ -66,7 +67,13 @@ export function EventMarker({ event, isSelected, onSelect }: EventMarkerProps) {
       <Ionicons
         name="star"
         size={38}
-        color={event.isParticipating ? '#98D8C8' : Palette.purple}
+        color={
+          isOwner
+            ? '#FFE28A'
+            : event.isParticipating
+              ? '#98D8C8'
+              : Palette.purple
+        }
         style={styles.marker}
       />
 
@@ -86,7 +93,13 @@ export function EventMarker({ event, isSelected, onSelect }: EventMarkerProps) {
                 <Ionicons name={config.icon} size={11} color="#fff" />
                 <Text style={styles.badgeText}>{config.label}</Text>
               </View>
-              {event.isParticipating && (
+              {isOwner && (
+                <View style={styles.ownerBadge}>
+                  <Ionicons name="star" size={11} color="#E0A800" />
+                  <Text style={styles.ownerText}>Your event</Text>
+                </View>
+              )}
+              {!isOwner && event.isParticipating && (
                 <View style={styles.participatingBadge}>
                   <Ionicons name="checkmark-circle" size={11} color="#2ecc71" />
                   <Text style={styles.participatingText}>Participating</Text>
@@ -192,6 +205,22 @@ const styles = StyleSheet.create({
     fontFamily: CustomFonts.moyamoya,
     fontSize: 11,
     color: '#2ecc71',
+  },
+  ownerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255, 226, 138, 0.25)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(224, 168, 0, 0.4)',
+  },
+  ownerText: {
+    fontFamily: CustomFonts.moyamoya,
+    fontSize: 11,
+    color: '#E0A800',
   },
   cardMeta: {
     fontFamily: CustomFonts.moyamoya,

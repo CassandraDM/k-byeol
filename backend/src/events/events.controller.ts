@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -37,6 +38,25 @@ export class EventsController {
   findById(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
     const user = req['user'] as { id: number };
     return this.eventsService.findById(id, user.id);
+  }
+
+  @Patch(':id')
+  update(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: Partial<CreateEventDto>,
+  ) {
+    const user = req['user'] as { id: number };
+    return this.eventsService.update(user.id, id, dto);
+  }
+
+  @Delete(':id')
+  remove(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    const user = req['user'] as { id: number };
+    return this.eventsService.remove(user.id, id);
   }
 
   @Post(':id/participate')

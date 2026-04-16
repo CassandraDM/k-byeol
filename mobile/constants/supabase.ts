@@ -46,3 +46,29 @@ export async function uploadAvatar(userId: number, uri: string): Promise<string>
   const { data } = supabase.storage.from('avatars').getPublicUrl(path);
   return data.publicUrl;
 }
+
+/**
+ * Uploads an event cover image to Supabase Storage and returns the public URL.
+ */
+export async function uploadEventCover(userId: number, uri: string): Promise<string> {
+  const supabase = getSupabase();
+  const ext = uri.split('.').pop() ?? 'jpg';
+  const path = `events/${userId}-${Date.now()}.${ext}`;
+
+  const response = await fetch(uri);
+  const blob = await response.blob();
+
+  const { error } = await supabase.storage
+    .from('avatars')
+    .upload(path, blob, {
+      contentType: `image/${ext === 'png' ? 'png' : 'jpeg'}`,
+      upsert: true,
+    });
+
+  if (error) {
+    throw new Error(`Event cover upload failed: ${error.message}`);
+  }
+
+  const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+  return data.publicUrl;
+}

@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -167,5 +168,40 @@ export class EventsService {
     });
 
     return { message: 'Participation cancelled' };
+  }
+
+  async update(userId: number, eventId: number, dto: Partial<CreateEventDto>) {
+    const event = await this.prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) throw new NotFoundException('Event not found');
+    if (event.organizerId !== userId) {
+      throw new ForbiddenException('You are not the organizer of this event');
+    }
+
+    const updated = await this.prisma.event.update({
+      where: { id: eventId },
+      data: {
+        ...(dto.title !== undefined && { title: dto.title }),
+        ...(dto.type !== undefined && { type: dto.type }),
+        ...(dto.latitude !== undefined && { latitude: dto.latitude }),
+        ...(dto.longitude !== undefined && { longitude: dto.longitude }),
+        ...(dto.address !== undefined && { address: dto.address }),
+        ...(dto.date !== undefined && { date: new Date(dto.date) }),
+        ...(dto.time !== undefined && { time: dto.time }),
+        ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.imageUrl !== undefined && { imageUrl: dto.imageUrl }),
+      },
+    });
+    return updated;
+  }
+
+  async remove(userId: number, eventId: number) {
+    const event = await this.prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) throw new NotFoundException('Event not found');
+    if (event.organizerId !== userId) {
+      throw new ForbiddenException('You are not the organizer of this event');
+    }
+
+    await this.prisma.event.delete({ where: { id: eventId } });
+    return { message: 'Event deleted' };
   }
 }
