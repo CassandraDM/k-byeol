@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { SlideUpSheet } from '@/components/ui/slide-up-sheet';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -50,10 +50,12 @@ const TYPE_OPTIONS: EventType[] = [
   'IN_PUBLIC',
 ];
 
-export default function NewEventScreen() {
+export default function EditEventScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { token } = useAuthStore();
 
+  const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState('');
   const [type, setType] = useState<EventType | null>(null);
   const [typeMenuOpen, setTypeMenuOpen] = useState(false);
@@ -66,6 +68,39 @@ export default function NewEventScreen() {
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!token || !id) return;
+    async function load() {
+      try {
+        const res = await fetch(`${API_URL}/events/${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const e = await res.json();
+          setTitle(e.title);
+          setType(e.type);
+          setDate(new Date(e.date));
+          const [hh, mm] = e.time.split(':').map(Number);
+          const t = new Date();
+          t.setHours(hh, mm, 0, 0);
+          setTime(t);
+          setAddress({
+            label: e.address,
+            latitude: e.latitude,
+            longitude: e.longitude,
+          });
+          setAddressQuery(e.address);
+          setDescription(e.description);
+        }
+      } catch (err) {
+        console.error('[EditEvent] Load error:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [token, id]);
 
   const handleAddressChange = async (text: string) => {
     setAddressQuery(text);
@@ -89,15 +124,15 @@ export default function NewEventScreen() {
       Alert.alert('Missing info', error);
       return;
     }
-    if (!token) return;
+    if (!token || !id) return;
     setSubmitting(true);
 
     try {
       const dateStr = date!.toISOString().split('T')[0];
       const timeStr = `${String(time!.getHours()).padStart(2, '0')}:${String(time!.getMinutes()).padStart(2, '0')}`;
 
-      const res = await fetch(`${API_URL}/events`, {
-        method: 'POST',
+      const res = await fetch(`${API_URL}/events/${id}`, {
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
@@ -115,38 +150,37 @@ export default function NewEventScreen() {
       });
 
       if (res.ok) {
-        // Reset form
-        setTitle('');
-        setType(null);
-        setDate(null);
-        setTime(null);
-        setAddressQuery('');
-        setAddress(null);
-        setDescription('');
-        // Go to map tab (navigate triggers useFocusEffect to refetch events)
-        router.navigate('/(tabs)/' as any);
+        router.back();
       } else {
         const body = await res.json().catch(() => ({}));
-        Alert.alert('Error', body.message?.toString() ?? 'Failed to create event');
+        Alert.alert('Error', body.message?.toString() ?? 'Failed to update event');
       }
     } catch (e) {
-      console.error('[NewEvent] Submit error:', e);
-      Alert.alert('Error', 'Could not create event. Please try again.');
+      console.error('[EditEvent] Submit error:', e);
+      Alert.alert('Error', 'Could not update event. Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
+  if (loading) {
+    return (
+      <LinearGradient colors={['#EDE7FF', '#F2EDFF']} style={styles.loader}>
+        <ActivityIndicator size="large" color={Palette.purple} />
+      </LinearGradient>
+    );
+  }
+
   return (
+    <LinearGradient colors={['#EDE7FF', '#F2EDFF']} style={styles.flex}>
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      {/* Fixed header */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="chevron-back" size={28} color={Palette.purple} />
         </Pressable>
-        <Text style={styles.headerTitle}>New Event</Text>
+        <Text style={styles.headerTitle}>Edit Event</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -154,9 +188,7 @@ export default function NewEventScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled">
-        {/* Form card */}
         <View style={styles.formCard}>
-          {/* Gradient background layers (Figma: radial purple→cyan + translucent overlays) */}
           <LinearGradient
             pointerEvents="none"
             colors={[
@@ -172,7 +204,6 @@ export default function NewEventScreen() {
           <View pointerEvents="none" style={styles.tintDark} />
           <View pointerEvents="none" style={styles.tintLight} />
 
-          {/* Title */}
           <View style={styles.field}>
             <Text style={styles.label}>Title</Text>
             <TextInput
@@ -185,12 +216,9 @@ export default function NewEventScreen() {
             />
           </View>
 
-          {/* Type dropdown */}
           <View style={styles.field}>
             <Text style={styles.label}>Type</Text>
-            <Pressable
-              style={styles.input}
-              onPress={() => setTypeMenuOpen((v) => !v)}>
+            <Pressable style={styles.input} onPress={() => setTypeMenuOpen((v) => !v)}>
               <View style={styles.dropdownRow}>
                 <Text style={[styles.inputText, !type && styles.placeholderText]}>
                   {type ? EVENT_TYPE_CONFIG[type].label : 'Select a type'}
@@ -230,13 +258,10 @@ export default function NewEventScreen() {
             )}
           </View>
 
-          {/* Date & Time */}
           <View style={styles.row}>
             <View style={[styles.field, styles.flexHalf]}>
               <Text style={styles.label}>Date</Text>
-              <Pressable
-                style={styles.input}
-                onPress={() => setShowDatePicker(true)}>
+              <Pressable style={styles.input} onPress={() => setShowDatePicker(true)}>
                 <View style={styles.dropdownRow}>
                   <Text style={[styles.inputText, !date && styles.placeholderText]}>
                     {date ? date.toLocaleDateString('en-GB') : 'Pick a date'}
@@ -247,9 +272,7 @@ export default function NewEventScreen() {
             </View>
             <View style={[styles.field, styles.flexHalf]}>
               <Text style={styles.label}>Time</Text>
-              <Pressable
-                style={styles.input}
-                onPress={() => setShowTimePicker(true)}>
+              <Pressable style={styles.input} onPress={() => setShowTimePicker(true)}>
                 <View style={styles.dropdownRow}>
                   <Text style={[styles.inputText, !time && styles.placeholderText]}>
                     {time
@@ -262,7 +285,6 @@ export default function NewEventScreen() {
             </View>
           </View>
 
-          {/* iOS: modal sheet with spinner picker. Android: native dialog */}
           {Platform.OS === 'ios' ? (
             <>
               <SlideUpSheet
@@ -339,7 +361,6 @@ export default function NewEventScreen() {
             </>
           )}
 
-          {/* Location */}
           <View style={styles.field}>
             <Text style={styles.label}>Location</Text>
             <TextInput
@@ -363,11 +384,7 @@ export default function NewEventScreen() {
                       setAddressQuery(s.label);
                       setAddressSuggestions([]);
                     }}>
-                    <Ionicons
-                      name="location-outline"
-                      size={16}
-                      color={Palette.purple}
-                    />
+                    <Ionicons name="location-outline" size={16} color={Palette.purple} />
                     <Text style={styles.dropdownItemText} numberOfLines={1}>
                       {s.label}
                     </Text>
@@ -377,7 +394,6 @@ export default function NewEventScreen() {
             )}
           </View>
 
-          {/* Description */}
           <View style={styles.field}>
             <Text style={styles.label}>Description</Text>
             <TextInput
@@ -392,7 +408,6 @@ export default function NewEventScreen() {
           </View>
         </View>
 
-        {/* Submit */}
         <View style={styles.submitRow}>
           <Pressable
             style={({ pressed }) => [
@@ -405,17 +420,19 @@ export default function NewEventScreen() {
             {submitting ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.submitText}>Create</Text>
+              <Text style={styles.submitText}>Save</Text>
             )}
           </Pressable>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  loader: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scrollContent: {
     paddingTop: 20,
     paddingBottom: 120,
@@ -459,9 +476,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(207, 126, 242, 0.2)',
   },
-  gradientLayer: {
-    ...StyleSheet.absoluteFillObject,
-  },
+  gradientLayer: { ...StyleSheet.absoluteFillObject },
   tintDark: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(43, 43, 43, 0.10)',
@@ -470,10 +485,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(242, 237, 255, 0.35)',
   },
-  field: {
-    alignSelf: 'stretch',
-    gap: 6,
-  },
+  field: { alignSelf: 'stretch', gap: 6 },
   label: {
     alignSelf: 'flex-start',
     fontFamily: CustomFonts.moyamoya,
@@ -497,13 +509,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#E07EFF',
   },
-  placeholderText: {
-    color: 'rgba(207, 126, 242, 0.5)',
-  },
-  textarea: {
-    minHeight: 100,
-    paddingTop: 12,
-  },
+  placeholderText: { color: 'rgba(207, 126, 242, 0.5)' },
+  textarea: { minHeight: 100, paddingTop: 12 },
   dropdownRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -525,25 +532,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
-  dropdownDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
+  dropdownDot: { width: 10, height: 10, borderRadius: 5 },
   dropdownItemText: {
     fontFamily: CustomFonts.outfit,
     fontSize: 14,
     color: '#E07EFF',
     flex: 1,
   },
-  row: {
-    alignSelf: 'stretch',
-    flexDirection: 'row',
-    gap: 12,
-  },
-  flexHalf: {
-    flex: 1,
-  },
+  row: { alignSelf: 'stretch', flexDirection: 'row', gap: 12 },
+  flexHalf: { flex: 1 },
   submitRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
@@ -560,10 +557,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 6,
   },
-  submitPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.97 }],
-  },
+  submitPressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
   submitText: {
     fontFamily: CustomFonts.syongsyong,
     fontSize: 20,
@@ -575,9 +569,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
-  backdropPress: {
-    ...StyleSheet.absoluteFillObject,
-  },
+  backdropPress: { ...StyleSheet.absoluteFillObject },
   modalSheet: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
@@ -586,10 +578,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     alignItems: 'center',
   },
-  picker: {
-    width: '100%',
-    height: 220,
-  },
+  picker: { width: '100%', height: 220 },
   modalDone: {
     alignSelf: 'center',
     paddingHorizontal: 20,

@@ -51,6 +51,16 @@ export default function EventDetailScreen() {
   const { token } = useAuthStore();
   const router = useRouter();
 
+  // Current user id (from JWT)
+  const currentUserId = (() => {
+    if (!token) return null;
+    try {
+      return JSON.parse(atob(token.split('.')[1])).sub as number;
+    } catch {
+      return null;
+    }
+  })();
+
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isParticipating, setIsParticipating] = useState(false);
@@ -118,6 +128,38 @@ export default function EventDetailScreen() {
     }
   };
 
+  const doDelete = async () => {
+    if (!token || !id) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/events/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        router.replace('/(tabs)/' as any);
+      } else {
+        Alert.alert('Error', 'Could not delete the event.');
+      }
+    } catch (e) {
+      console.error('[EventDetail] Delete error:', e);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDelete = () => {
+    if (actionLoading) return;
+    Alert.alert(
+      'Delete event',
+      'Are you sure you want to permanently delete this event?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: doDelete },
+      ],
+    );
+  };
+
   const handleContactOrganizer = async () => {
     if (!token || !event?.organizer?.id || contactLoading) return;
     setContactLoading(true);
@@ -162,6 +204,7 @@ export default function EventDetailScreen() {
   }
 
   const config = EVENT_TYPE_CONFIG[event.type];
+  const isOwner = currentUserId === event.organizer.id;
 
   return (
     <LinearGradient colors={["#EDE7FF", "#F2EDFF"]} style={styles.container}>
@@ -180,7 +223,13 @@ export default function EventDetailScreen() {
               <Ionicons name={config.icon} size={14} color="#fff" />
               <ThemedText style={styles.badgeText}>{config.label}</ThemedText>
             </View>
-            {isParticipating && (
+            {isOwner && (
+              <View style={styles.ownerBadge}>
+                <Ionicons name="star" size={14} color="#E0A800" />
+                <ThemedText style={styles.ownerText}>Your event</ThemedText>
+              </View>
+            )}
+            {!isOwner && isParticipating && (
               <View style={styles.participatingBadge}>
                 <Ionicons name="checkmark-circle" size={14} color="#2ecc71" />
                 <ThemedText style={styles.participatingText}>
@@ -218,7 +267,9 @@ export default function EventDetailScreen() {
             <ThemedText style={styles.infoText}>
               Organized by {event.organizer.username}
             </ThemedText>
-            <Pressable
+            {!isOwner && (
+              <>
+                <Pressable
               style={({ pressed }) => [
                 styles.iconButton,
                 pressed && styles.actionButtonPressed,
@@ -251,6 +302,8 @@ export default function EventDetailScreen() {
                 />
               )}
             </Pressable>
+              </>
+            )}
           </View>
 
           <View style={styles.infoRow}>
@@ -296,7 +349,13 @@ export default function EventDetailScreen() {
                 <Ionicons
                   name="star"
                   size={38}
-                  color={isParticipating ? '#98D8C8' : Palette.purple}
+                  color={
+                    isOwner
+                      ? '#FFE28A'
+                      : isParticipating
+                        ? '#98D8C8'
+                        : Palette.purple
+                  }
                   style={styles.detailMarker}
                 />
               </Marker>
@@ -307,30 +366,63 @@ export default function EventDetailScreen() {
 
       {/* Bottom action */}
       <View style={styles.bottomBar}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.actionButton,
-            isParticipating && styles.actionButtonLeave,
-            pressed && styles.actionButtonPressed,
-          ]}
-          onPress={handleParticipate}
-          disabled={actionLoading}
-        >
-          {actionLoading ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <>
-              <Ionicons
-                name={isParticipating ? "exit-outline" : "hand-left-outline"}
-                size={20}
-                color="#fff"
-              />
-              <ThemedText style={styles.actionButtonText}>
-                {isParticipating ? "Leave Event" : "Join Event"}
-              </ThemedText>
-            </>
-          )}
-        </Pressable>
+        {isOwner ? (
+          <View style={styles.ownerActions}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.actionButton,
+                styles.ownerButton,
+                pressed && styles.actionButtonPressed,
+              ]}
+              onPress={() => router.push(`/event/edit/${event.id}` as any)}>
+              <Ionicons name="create-outline" size={20} color="#fff" />
+              <ThemedText style={styles.actionButtonText}>Edit</ThemedText>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.actionButton,
+                styles.ownerButton,
+                styles.actionButtonLeave,
+                pressed && styles.actionButtonPressed,
+              ]}
+              onPress={handleDelete}
+              disabled={actionLoading}>
+              {actionLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="trash-outline" size={20} color="#fff" />
+                  <ThemedText style={styles.actionButtonText}>Delete</ThemedText>
+                </>
+              )}
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable
+            style={({ pressed }) => [
+              styles.actionButton,
+              isParticipating && styles.actionButtonLeave,
+              pressed && styles.actionButtonPressed,
+            ]}
+            onPress={handleParticipate}
+            disabled={actionLoading}
+          >
+            {actionLoading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Ionicons
+                  name={isParticipating ? "exit-outline" : "hand-left-outline"}
+                  size={20}
+                  color="#fff"
+                />
+                <ThemedText style={styles.actionButtonText}>
+                  {isParticipating ? "Leave Event" : "Join Event"}
+                </ThemedText>
+              </>
+            )}
+          </Pressable>
+        )}
       </View>
     </LinearGradient>
   );
@@ -469,6 +561,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#2ecc71",
   },
+  ownerBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255, 226, 138, 0.25)",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(224, 168, 0, 0.4)",
+  },
+  ownerText: {
+    fontFamily: CustomFonts.moyamoya,
+    fontSize: 13,
+    color: "#E0A800",
+  },
   actionButton: {
     backgroundColor: "#7B2FBE",
     borderRadius: 12,
@@ -486,6 +594,13 @@ const styles = StyleSheet.create({
   actionButtonLeave: {
     backgroundColor: "#E74C3C",
     shadowColor: "#E74C3C",
+  },
+  ownerActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  ownerButton: {
+    flex: 1,
   },
   actionButtonPressed: {
     opacity: 0.85,
