@@ -48,6 +48,8 @@ export default function RootLayout() {
         {/* Event detail */}
         <Stack.Screen name="event/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="event/edit/[id]" options={{ headerShown: false }} />
+        {/* Chat thread */}
+        <Stack.Screen name="chat/[conversationId]" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
       <StatusBar style="auto" />
