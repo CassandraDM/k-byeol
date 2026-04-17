@@ -161,7 +161,7 @@ export default function EventDetailScreen() {
   };
 
   const handleContactOrganizer = async () => {
-    if (!token || !event?.organizer?.id || contactLoading) return;
+    if (!token || !event?.organizer?.id || !currentUserId || contactLoading) return;
     setContactLoading(true);
 
     try {
@@ -172,13 +172,17 @@ export default function EventDetailScreen() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          participantIds: [event.organizer.id],
+          participantIds: [currentUserId, event.organizer.id],
+          type: "PRIVATE",
         }),
       });
 
       if (res.ok) {
         const conversation = await res.json();
         router.push(`/chat/${conversation.id}` as any);
+      } else {
+        const body = await res.json().catch(() => ({}));
+        console.error("[EventDetail] Contact failed:", res.status, body);
       }
     } catch (e) {
       console.error("[EventDetail] Contact organizer error:", e);
