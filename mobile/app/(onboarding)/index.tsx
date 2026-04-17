@@ -21,6 +21,7 @@ import { CustomFonts, Palette } from '@/constants/theme';
 import { API_URL } from '@/constants/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { useOnboardingStore } from '@/stores/onboarding-store';
+import { getUserIdFromToken } from '@/utils/jwt';
 
 // ─── City search helper ────────────────────────────────────────────────────────
 interface City {
@@ -69,14 +70,10 @@ function StepAvatar() {
     if (avatarUri && !avatarUri.startsWith('http') && token) {
       setUploading(true);
       try {
-        let userId = 0;
-        try {
-          const payload = JSON.parse(atob(token.split('.')[1]));
-          userId = payload.sub;
-        } catch { /* fallback */ }
+        const userId = getUserIdFromToken(token) ?? 0;
         const publicUrl = await uploadAvatar(userId, avatarUri);
-        await fetch(`${API_URL}/users/me`, {
-          method: 'PATCH',
+        await fetch(`${API_URL}/users/${userId}`, {
+          method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,

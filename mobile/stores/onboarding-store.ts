@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { API_URL } from '@/constants/api';
 import { uploadAvatar } from '@/constants/supabase';
+import { getUserIdFromToken } from '@/utils/jwt';
 
 interface City {
   code: string;
@@ -69,7 +70,9 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       let hasGroups = false;
 
       // Fetch profile (avatar)
-      const profileRes = await fetch(`${API_URL}/users/me`, {
+      const userId = getUserIdFromToken(token);
+      if (!userId) return;
+      const profileRes = await fetch(`${API_URL}/users/${userId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (profileRes.ok) {
@@ -128,8 +131,8 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       // 1. Upload avatar if selected — only upload local URIs, not already-uploaded URLs
       if (avatarUri && !avatarUri.startsWith('http')) {
         const publicUrl = await uploadAvatar(userId, avatarUri);
-        await fetch(`${API_URL}/users/me`, {
-          method: 'PATCH',
+        await fetch(`${API_URL}/users/${userId}`, {
+          method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
