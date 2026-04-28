@@ -17,7 +17,7 @@ import { ThemedText } from "@/components/themed-text";
 import { CustomFonts, Palette } from "@/constants/theme";
 import { EVENT_TYPE_CONFIG } from "@/constants/event-types";
 import { useAuthStore } from "@/stores/auth-store";
-import { API_URL } from "@/constants/api";
+import { apiFetch } from "@/utils/api";
 import type { EventType } from "@/constants/event-types";
 
 interface EventDetail {
@@ -73,9 +73,7 @@ export default function EventDetailScreen() {
 
     async function fetchEvent() {
       try {
-        const res = await fetch(`${API_URL}/events/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await apiFetch(`/events/${id}`);
         if (res.ok) {
           const data = await res.json();
           setEvent(data);
@@ -96,9 +94,8 @@ export default function EventDetailScreen() {
     if (!token || !id) return;
     setActionLoading(true);
     try {
-      const res = await fetch(`${API_URL}/events/${id}/participate`, {
+      const res = await apiFetch(`/events/${id}/participate`, {
         method: join ? "POST" : "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         setIsParticipating(join);
@@ -132,10 +129,7 @@ export default function EventDetailScreen() {
     if (!token || !id) return;
     setActionLoading(true);
     try {
-      const res = await fetch(`${API_URL}/events/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await apiFetch(`/events/${id}`, { method: 'DELETE' });
       if (res.ok) {
         router.replace('/(tabs)/' as any);
       } else {
@@ -165,12 +159,9 @@ export default function EventDetailScreen() {
     setContactLoading(true);
 
     try {
-      const res = await fetch(`${API_URL}/conversations`, {
+      const res = await apiFetch('/conversations', {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           participantIds: [currentUserId, event.organizer.id],
           type: "PRIVATE",

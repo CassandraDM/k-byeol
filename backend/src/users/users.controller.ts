@@ -11,7 +11,13 @@ import {
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 import type { Request } from 'express';
 
 class UpdateProfileDto {
@@ -20,6 +26,17 @@ class UpdateProfileDto {
   @MinLength(2)
   @MaxLength(50)
   username?: string;
+
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(100)
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  @MaxLength(255)
+  password?: string;
 
   @IsOptional()
   @IsString()

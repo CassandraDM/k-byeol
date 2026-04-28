@@ -12,7 +12,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { CustomFonts, Palette } from '@/constants/theme';
-import { API_URL } from '@/constants/api';
+import { apiFetch } from '@/utils/api';
 import { useAuthStore } from '@/stores/auth-store';
 
 interface Participant {
@@ -70,9 +70,7 @@ export default function ChatScreen() {
       let cancelled = false;
       async function load() {
         try {
-          const res = await fetch(`${API_URL}/conversations`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          const res = await apiFetch('/conversations');
           if (res.ok) {
             const data = await res.json();
             if (!cancelled) setConversations(data);

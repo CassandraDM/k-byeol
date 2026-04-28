@@ -18,7 +18,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { CustomFonts, Palette } from '@/constants/theme';
-import { API_URL } from '@/constants/api';
+import { apiFetch } from '@/utils/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { EVENT_TYPE_CONFIG } from '@/constants/event-types';
 import type { EventType } from '@/constants/event-types';
@@ -73,9 +73,7 @@ export default function EditEventScreen() {
     if (!token || !id) return;
     async function load() {
       try {
-        const res = await fetch(`${API_URL}/events/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await apiFetch(`/events/${id}`);
         if (res.ok) {
           const e = await res.json();
           setTitle(e.title);
@@ -131,12 +129,9 @@ export default function EditEventScreen() {
       const dateStr = date!.toISOString().split('T')[0];
       const timeStr = `${String(time!.getHours()).padStart(2, '0')}:${String(time!.getMinutes()).padStart(2, '0')}`;
 
-      const res = await fetch(`${API_URL}/events/${id}`, {
+      const res = await apiFetch(`/events/${id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: title.trim(),
           type,

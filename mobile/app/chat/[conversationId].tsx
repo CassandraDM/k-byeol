@@ -18,6 +18,7 @@ import { io, Socket } from 'socket.io-client';
 
 import { CustomFonts, Palette } from '@/constants/theme';
 import { API_URL } from '@/constants/api';
+import { apiFetch } from '@/utils/api';
 import { useAuthStore } from '@/stores/auth-store';
 
 interface Sender {
@@ -83,12 +84,8 @@ export default function ChatThreadScreen() {
     async function load() {
       try {
         const [convRes, msgRes] = await Promise.all([
-          fetch(`${API_URL}/conversations`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`${API_URL}/conversations/${conversationId}/messages?limit=50`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
+          apiFetch('/conversations'),
+          apiFetch(`/conversations/${conversationId}/messages?limit=50`),
         ]);
 
         if (convRes.ok) {

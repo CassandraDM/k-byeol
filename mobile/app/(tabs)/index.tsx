@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import MapView from 'react-native-maps';
 
 import { useAuthStore } from '@/stores/auth-store';
-import { API_URL } from '@/constants/api';
+import { apiFetch } from '@/utils/api';
 import { getCityCoordinates, DEFAULT_COORDINATES } from '@/utils/geo';
 import { EventMarker } from '@/components/event-marker';
 import type { MapEvent } from '@/components/event-marker';
@@ -39,9 +39,8 @@ export default function IndexScreen() {
     async (coords: { latitude: number; longitude: number }) => {
       if (!token) return;
       try {
-        const res = await fetch(
-          `${API_URL}/events?lat=${coords.latitude}&lng=${coords.longitude}&radius=50`,
-          { headers: { Authorization: `Bearer ${token}` } },
+        const res = await apiFetch(
+          `/events?lat=${coords.latitude}&lng=${coords.longitude}&radius=50`,
         );
         if (res.ok) {
           const data = await res.json();
@@ -62,9 +61,7 @@ export default function IndexScreen() {
 
     async function load() {
       try {
-        const prefsRes = await fetch(`${API_URL}/users/me/preferences`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const prefsRes = await apiFetch('/users/me/preferences');
 
         let coords = DEFAULT_COORDINATES;
 

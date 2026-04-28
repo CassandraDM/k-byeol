@@ -18,7 +18,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { CustomFonts, Palette } from '@/constants/theme';
-import { API_URL } from '@/constants/api';
+import { apiFetch } from '@/utils/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { EVENT_TYPE_CONFIG } from '@/constants/event-types';
 import type { EventType } from '@/constants/event-types';
@@ -96,12 +96,9 @@ export default function NewEventScreen() {
       const dateStr = date!.toISOString().split('T')[0];
       const timeStr = `${String(time!.getHours()).padStart(2, '0')}:${String(time!.getMinutes()).padStart(2, '0')}`;
 
-      const res = await fetch(`${API_URL}/events`, {
+      const res = await apiFetch('/events', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: title.trim(),
           type,

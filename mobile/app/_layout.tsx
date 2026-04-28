@@ -50,6 +50,11 @@ export default function RootLayout() {
         <Stack.Screen name="event/edit/[id]" options={{ headerShown: false }} />
         {/* Chat thread */}
         <Stack.Screen name="chat/[conversationId]" options={{ headerShown: false }} />
+        {/* Profile */}
+        <Stack.Screen name="profile/[id]" options={{ headerShown: false }} />
+        {/* Settings */}
+        <Stack.Screen name="settings/index" options={{ headerShown: false }} />
+        <Stack.Screen name="settings/edit-profile" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
       <StatusBar style="auto" />

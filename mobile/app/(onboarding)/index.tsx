@@ -18,10 +18,11 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { HolographicBackground } from '@/components/ui/holographic-background';
 import { CustomFonts, Palette } from '@/constants/theme';
-import { API_URL } from '@/constants/api';
+import { apiFetch } from '@/utils/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { useOnboardingStore } from '@/stores/onboarding-store';
 import { getUserIdFromToken } from '@/utils/jwt';
+import { uploadAvatar } from '@/constants/supabase';
 
 // ─── City search helper ────────────────────────────────────────────────────────
 interface City {
@@ -72,12 +73,9 @@ function StepAvatar() {
       try {
         const userId = getUserIdFromToken(token) ?? 0;
         const publicUrl = await uploadAvatar(userId, avatarUri);
-        await fetch(`${API_URL}/users/${userId}`, {
+        await apiFetch(`/users/${userId}`, {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ avatar: publicUrl }),
         });
         setAvatarUri(publicUrl);
@@ -173,12 +171,9 @@ function StepCity() {
     if (city && token) {
       setSaving(true);
       try {
-        await fetch(`${API_URL}/users/me/preferences`, {
+        await apiFetch('/users/me/preferences', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             cityCode: city.code,
             cityName: city.nom,
@@ -284,9 +279,7 @@ function StepGroups() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${API_URL}/users/me/preferences/groups`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await apiFetch('/users/me/preferences/groups');
         if (res.ok) {
           const data = await res.json();
           setGroups(data);
@@ -302,12 +295,9 @@ function StepGroups() {
   const handleRequestGroup = async () => {
     if (!requestName.trim()) return;
     try {
-      await fetch(`${API_URL}/users/me/preferences/groups/request`, {
+      await apiFetch('/users/me/preferences/groups/request', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: requestName.trim() }),
       });
       setRequestSent(true);
