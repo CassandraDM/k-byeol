@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { API_URL } from '@/constants/api';
+import { apiFetch } from '@/utils/api';
 import { uploadAvatar } from '@/constants/supabase';
 import { getUserIdFromToken } from '@/utils/jwt';
 
@@ -72,9 +72,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       // Fetch profile (avatar)
       const userId = getUserIdFromToken(token);
       if (!userId) return;
-      const profileRes = await fetch(`${API_URL}/users/${userId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const profileRes = await apiFetch(`/users/${userId}`);
       if (profileRes.ok) {
         const profile = await profileRes.json();
         if (profile.avatar) {
@@ -84,9 +82,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       }
 
       // Fetch preferences (city + groups)
-      const prefsRes = await fetch(`${API_URL}/users/me/preferences`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const prefsRes = await apiFetch('/users/me/preferences');
       if (prefsRes.ok) {
         const prefs = await prefsRes.json();
         if (prefs.city) {
@@ -131,12 +127,9 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       // 1. Upload avatar if selected — only upload local URIs, not already-uploaded URLs
       if (avatarUri && !avatarUri.startsWith('http')) {
         const publicUrl = await uploadAvatar(userId, avatarUri);
-        await fetch(`${API_URL}/users/${userId}`, {
+        await apiFetch(`/users/${userId}`, {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ avatar: publicUrl }),
         });
       }
@@ -153,12 +146,9 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       }
 
       if (Object.keys(prefsBody).length > 0) {
-        await fetch(`${API_URL}/users/me/preferences`, {
+        await apiFetch('/users/me/preferences', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(prefsBody),
         });
       }

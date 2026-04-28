@@ -4,9 +4,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import * as bcrypt from 'bcryptjs';
 
 interface UpdateProfileData {
   username?: string;
+  email?: string;
+  password?: string;
   avatar?: string;
   bio?: string;
 }
@@ -83,10 +86,25 @@ export class UsersService {
       }
     }
 
+    if (data.email && data.email !== user.email) {
+      const existing = await this.prisma.user.findUnique({
+        where: { email: data.email },
+      });
+      if (existing && existing.id !== userId) {
+        throw new ConflictException('Email already in use');
+      }
+    }
+
+    const hashedPassword = data.password
+      ? await bcrypt.hash(data.password, 10)
+      : undefined;
+
     const updated = await this.prisma.user.update({
       where: { id: userId },
       data: {
         username: data.username ?? undefined,
+        email: data.email ?? undefined,
+        password: hashedPassword,
         avatar: data.avatar ?? undefined,
         bio: data.bio ?? undefined,
       },
@@ -112,7 +130,10 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    const now = new Date();
+    // Normalise to start of today so events scheduled today
+    // (stored as midnight UTC) still count as "upcoming"
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     const [organized, participated] = await Promise.all([
       this.prisma.event.findMany({
@@ -153,11 +174,17 @@ export class UsersService {
     const organizedMapped = organized.map((e) => mapEvent(e, true));
     const participatedMapped = participated.map((e) => mapEvent(e, false));
 
-    const all = [...organizedMapped, ...participatedMapped];
+    // Deduplicate (a user can both organise AND participate in their event)
+    const byId = new Map<number, ReturnType<typeof mapEvent>>();
+    for (const e of organizedMapped) byId.set(e.id, e);
+    for (const e of participatedMapped) {
+      if (!byId.has(e.id)) byId.set(e.id, e);
+    }
+    const all = Array.from(byId.values());
 
     return {
-      upcoming: all.filter((e) => e.date >= now),
-      past: all.filter((e) => e.date < now),
+      upcoming: all.filter((e) => new Date(e.date) >= today),
+      past: all.filter((e) => new Date(e.date) < today),
     };
   }
 
