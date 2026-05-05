@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Callout, Marker } from 'react-native-maps';
 import { useRouter } from 'expo-router';
@@ -45,6 +45,16 @@ export function EventMarker({ event, isSelected, isOwner, onSelect }: EventMarke
   const router = useRouter();
   const markerRef = useRef<any>(null);
 
+  // Android snapshots the marker child as a bitmap. If we lock tracksViewChanges to false
+  // immediately, the icon font isn't rendered yet and the marker stays blank.
+  // Strategy: track changes for ~1s (long enough for the font to render), then stop.
+  const [tracksChanges, setTracksChanges] = useState(true);
+  useEffect(() => {
+    setTracksChanges(true);
+    const timer = setTimeout(() => setTracksChanges(false), 1000);
+    return () => clearTimeout(timer);
+  }, [isOwner, event.isParticipating, event.type]);
+
   // When this marker becomes selected (after zoom), open the callout
   useEffect(() => {
     if (isSelected) {
@@ -63,7 +73,7 @@ export function EventMarker({ event, isSelected, isOwner, onSelect }: EventMarke
       anchor={{ x: 0.5, y: 0.5 }}
       calloutAnchor={{ x: 0.5, y: 0 }}
       onPress={() => onSelect(event)}
-      tracksViewChanges={false}>
+      tracksViewChanges={tracksChanges}>
       <Ionicons
         name="star"
         size={38}
