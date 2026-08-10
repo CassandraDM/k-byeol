@@ -36,6 +36,8 @@ interface AuthState {
   hydrate: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (username: string, email: string, password: string) => Promise<void>;
+  forgotPassword: (email: string) => Promise<boolean>;
+  resetPassword: (token: string, password: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   setOnboardingComplete: () => Promise<void>;
   clearError: () => void;
@@ -159,6 +161,92 @@ export const useAuthStore = create<AuthState>((set) => ({
         error: "Can't reach the server right now. Check your connection.",
         isLoading: false,
       });
+    }
+  },
+
+  forgotPassword: async (email: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch(`${API_URL}/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      if (res.status === 400) {
+        const body = await res.json().catch(() => ({}));
+        const messages: string[] = Array.isArray(body.message)
+          ? body.message
+          : [body.message];
+        set({ error: parseValidationErrors(messages), isLoading: false });
+        return false;
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.error("[forgotPassword] Error response →", res.status, body);
+        set({ error: "Hmm… something’s off. Try again.", isLoading: false });
+        return false;
+      }
+
+      // The backend always returns a generic success (no account enumeration).
+      set({ isLoading: false });
+      return true;
+    } catch (e) {
+      console.error(
+        "[forgotPassword] Network error →",
+        `${API_URL}/auth/forgot-password`,
+        e,
+      );
+      set({
+        error: "Can't reach the server right now. Check your connection.",
+        isLoading: false,
+      });
+      return false;
+    }
+  },
+
+  resetPassword: async (token: string, password: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch(`${API_URL}/auth/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, password }),
+      });
+
+      if (res.status === 400) {
+        const body = await res.json().catch(() => ({}));
+        const messages: string[] = Array.isArray(body.message)
+          ? body.message
+          : [body.message];
+        // Token problems come back as a single human-readable string; password
+        // rules come back as class-validator messages we already know how to map.
+        const friendly = messages
+          .map((m) => VALIDATION_MAP[m] ?? m)
+          .join("\n");
+        set({ error: friendly, isLoading: false });
+        return false;
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.error("[resetPassword] Error response →", res.status, body);
+        set({ error: "Hmm… something’s off. Try again.", isLoading: false });
+        return false;
+      }
+
+      set({ isLoading: false });
+      return true;
+    } catch (e) {
+      console.error(
+        "[resetPassword] Network error →",
+        `${API_URL}/auth/reset-password`,
+        e,
+      );
+      set({
+        error: "Can't reach the server right now. Check your connection.",
+        isLoading: false,
+      });
+      return false;
     }
   },
 

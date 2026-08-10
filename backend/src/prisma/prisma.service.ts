@@ -9,12 +9,14 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   constructor() {
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+      throw new Error(
+        'DATABASE_URL is not set — add it to your .env (see .env.example).',
+      );
+    }
     const pool = new Pool({
-      host: 'aws-1-eu-west-3.pooler.supabase.com',
-      port: 6543,
-      user: 'postgres.jictcppytorltywhnmjf',
-      password: 'Chickenhasmeat1509!',
-      database: 'postgres',
+      connectionString,
       ssl: { rejectUnauthorized: false },
     });
     const adapter = new PrismaPg(pool as any);
