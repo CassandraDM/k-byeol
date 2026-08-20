@@ -15,6 +15,7 @@ import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { QueryEventsDto } from './dto/query-events.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { EmailVerifiedGuard } from '../auth/guards/email-verified.guard';
 import type { Request } from 'express';
 
 @Controller('events')
@@ -23,6 +24,7 @@ export class EventsController {
   constructor(private readonly eventsService: EventsService) {}
 
   @Post()
+  @UseGuards(EmailVerifiedGuard)
   create(@Req() req: Request, @Body() dto: CreateEventDto) {
     const user = req['user'] as { id: number };
     return this.eventsService.create(user.id, dto);

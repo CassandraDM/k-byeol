@@ -1,6 +1,6 @@
 import { BlurView } from "expo-blur";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -19,18 +19,45 @@ import { CustomFonts, Palette } from "@/constants/theme";
 
 const RESEND_COOLDOWN = 30; // seconds
 
-export default function VerifyCodeScreen() {
+export default function VerifyEmailScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ email?: string }>();
-  const email = typeof params.email === "string" ? params.email : "";
+  const params = useLocalSearchParams<{ next?: string; send?: string }>();
+  const next = typeof params.next === "string" ? params.next : "";
 
-  const { verifyResetCode, forgotPassword, isLoading, error, clearError } =
+  const { verifyEmail, resendVerification, isLoading, error, clearError } =
     useAuthStore();
 
   const [code, setCode] = useState("");
   const [fieldError, setFieldError] = useState<string | undefined>();
+  const [notice, setNotice] = useState<string | undefined>();
   const [seconds, setSeconds] = useState(RESEND_COOLDOWN);
   const [resending, setResending] = useState(false);
+  const requestedOnMount = useRef(false);
+
+  const goNext = useCallback(() => {
+    if (next === "onboarding") {
+      router.replace("/(onboarding)" as any);
+    } else if (next === "tabs") {
+      router.replace("/(tabs)" as any);
+    } else {
+      router.back();
+    }
+  }, [next, router]);
+
+  const handleAlreadyVerified = useCallback(() => {
+    setNotice("Your email is already verified.");
+    setTimeout(goNext, 1200);
+  }, [goNext]);
+
+  // If arriving from the "create event" gate, request a fresh code once.
+  useEffect(() => {
+    if (params.send === "true" && !requestedOnMount.current) {
+      requestedOnMount.current = true;
+      resendVerification().then((result) => {
+        if (result === "already-verified") handleAlreadyVerified();
+      });
+    }
+  }, [params.send, resendVerification, handleAlreadyVerified]);
 
   // Countdown for the "resend" button.
   useEffect(() => {
@@ -46,19 +73,20 @@ export default function VerifyCodeScreen() {
       return;
     }
     setFieldError(undefined);
-    const ok = await verifyResetCode(code.trim());
-    if (ok) {
-      router.push(`/(auth)/reset-password?code=${code.trim()}` as any);
-    }
+    const ok = await verifyEmail(code.trim());
+    if (ok) goNext();
   };
 
   const handleResend = async () => {
-    if (seconds > 0 || resending || !email) return;
+    if (seconds > 0 || resending) return;
     clearError();
+    setNotice(undefined);
     setResending(true);
-    const ok = await forgotPassword(email);
+    const result = await resendVerification();
     setResending(false);
-    if (ok) {
+    if (result === "already-verified") {
+      handleAlreadyVerified();
+    } else if (result === "sent") {
       setCode("");
       setSeconds(RESEND_COOLDOWN);
     }
@@ -82,13 +110,17 @@ export default function VerifyCodeScreen() {
             <View style={styles.cardOverlay} />
 
             <View style={styles.cardContent}>
-              <Text style={styles.title}>Enter code</Text>
+              <Text style={styles.title}>Check your email</Text>
               <Text style={styles.subtitle}>
-                We sent a 6-digit code to{"\n"}
-                <Text style={styles.emphasis}>{email || "your email"}</Text>.
+                We sent a 6-digit code to your email address. Enter it below to
+                verify your account.
               </Text>
 
-              {error ? (
+              {notice ? (
+                <View style={styles.noticeBanner}>
+                  <Text style={styles.noticeBannerText}>{notice}</Text>
+                </View>
+              ) : error ? (
                 <View style={styles.errorBanner}>
                   <Text style={styles.errorBannerText}>{error}</Text>
                 </View>
@@ -132,16 +164,15 @@ export default function VerifyCodeScreen() {
                 {isLoading && !resending ? (
                   <ActivityIndicator color={Palette.white} />
                 ) : (
-                  <Text style={styles.buttonText}>Continue</Text>
+                  <Text style={styles.buttonText}>Verify</Text>
                 )}
               </Pressable>
 
-              <Text
-                style={styles.backLink}
-                onPress={() => router.replace("/(auth)/sign-in" as any)}
-              >
-                Back to log in
-              </Text>
+              {!next ? (
+                <Text style={styles.backLink} onPress={() => router.back()}>
+                  Go back
+                </Text>
+              ) : null}
             </View>
           </View>
         </ScrollView>
@@ -188,7 +219,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 22,
   },
-  emphasis: { color: Palette.pink },
 
   errorBanner: {
     backgroundColor: "rgba(193, 0, 80, 0.12)",
@@ -201,6 +231,21 @@ const styles = StyleSheet.create({
   },
   errorBannerText: {
     color: "#C10050",
+    fontSize: 12,
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  noticeBanner: {
+    backgroundColor: "rgba(46, 160, 87, 0.14)",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "rgba(46, 160, 87, 0.3)",
+  },
+  noticeBannerText: {
+    color: "#1E6B2F",
     fontSize: 12,
     textAlign: "center",
     lineHeight: 18,

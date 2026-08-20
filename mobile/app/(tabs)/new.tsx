@@ -52,7 +52,7 @@ const TYPE_OPTIONS: EventType[] = [
 
 export default function NewEventScreen() {
   const router = useRouter();
-  const { token } = useAuthStore();
+  const { token, emailVerified } = useAuthStore();
 
   const [title, setTitle] = useState('');
   const [type, setType] = useState<EventType | null>(null);
@@ -133,6 +133,41 @@ export default function NewEventScreen() {
       setSubmitting(false);
     }
   };
+
+  // Gate: event creation requires a verified email (enforced server-side too).
+  if (!emailVerified) {
+    return (
+      <View style={styles.flex}>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="chevron-back" size={28} color={Palette.purple} />
+          </Pressable>
+          <Text style={styles.headerTitle}>New Event</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <View style={styles.gate}>
+          <View style={styles.gateIcon}>
+            <Ionicons name="mail-unread-outline" size={56} color={Palette.purple} />
+          </View>
+          <Text style={styles.gateTitle}>Verify your email first</Text>
+          <Text style={styles.gateText}>
+            You need to verify your email address before you can create events.
+          </Text>
+          <Pressable
+            style={({ pressed }) => [
+              styles.gateButton,
+              pressed && styles.submitPressed,
+            ]}
+            onPress={() =>
+              router.push("/(auth)/verify-email?send=true" as any)
+            }>
+            <Text style={styles.submitText}>Verify email</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -413,6 +448,52 @@ export default function NewEventScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  gate: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+    gap: 14,
+    marginTop: -40,
+  },
+  gateIcon: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(207, 126, 242, 0.15)',
+    borderWidth: 2,
+    borderColor: 'rgba(207, 126, 242, 0.3)',
+    marginBottom: 8,
+  },
+  gateTitle: {
+    fontFamily: CustomFonts.moyamoya,
+    fontSize: 24,
+    color: Palette.purple,
+    textAlign: 'center',
+    lineHeight: 32,
+    paddingTop: 4,
+  },
+  gateText: {
+    fontFamily: CustomFonts.outfit,
+    fontSize: 14,
+    color: Palette.pink,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  gateButton: {
+    backgroundColor: '#CF7EF2',
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    borderRadius: 12,
+    shadowColor: '#7B2FBE',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
   scrollContent: {
     paddingTop: 20,
     paddingBottom: 120,
@@ -488,6 +569,7 @@ const styles = StyleSheet.create({
     color: '#E07EFF',
     minHeight: 46,
     justifyContent: 'center',
+    letterSpacing: 0,
   },
   inputText: {
     fontFamily: CustomFonts.outfit,

@@ -147,9 +147,18 @@ export default function SignInScreen() {
     } else {
       await signUp(username, email, password);
     }
-    const { isAuthenticated, isNewUser } = useAuthStore.getState();
+    const { isAuthenticated, isNewUser, emailVerified } =
+      useAuthStore.getState();
     if (isAuthenticated) {
-      router.replace(isNewUser ? ("/(onboarding)" as any) : "/(tabs)");
+      if (isNewUser) {
+        // New accounts must check their email; verification leads to onboarding.
+        router.replace("/(auth)/verify-email?next=onboarding" as any);
+      } else if (!emailVerified) {
+        // Returning but unverified → must verify before entering the app.
+        router.replace("/(auth)/verify-prompt" as any);
+      } else {
+        router.replace("/(tabs)");
+      }
     }
   };
 
@@ -431,6 +440,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#E07EFF",
     fontFamily: CustomFonts.syongsyong,
+    // Explicit reset — prevents Fabric view-recycling from carrying over the
+    // code field's letterSpacing onto these inputs.
+    letterSpacing: 0,
   },
   inputError: { borderWidth: 1.5, borderColor: "#C10050" },
   fieldError: { color: "#C10050", fontSize: 12, marginTop: 4 },

@@ -285,12 +285,13 @@ async function main() {
   const hashedPassword = await bcrypt.hash('SeedPassword123!', 10);
   const organizer = await prisma.user.upsert({
     where: { email: 'seed@kbyeol.dev' },
-    update: {},
+    update: { emailVerified: true },
     create: {
       username: 'kbyeol-events',
       email: 'seed@kbyeol.dev',
       password: hashedPassword,
       role: 'organizer',
+      emailVerified: true,
     },
   });
   console.log(`Seed organizer: id=${organizer.id}`);
@@ -301,12 +302,13 @@ async function main() {
   for (const u of SEED_USERS) {
     const user = await prisma.user.upsert({
       where: { email: u.email },
-      update: { bio: u.bio },
+      update: { bio: u.bio, emailVerified: true },
       create: {
         username: u.username,
         email: u.email,
         password: hashedPassword,
         bio: u.bio,
+        emailVerified: true,
       },
     });
     seedUsers.push(user);

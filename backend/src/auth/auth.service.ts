@@ -14,9 +14,13 @@ import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyResetCodeDto } from './dto/verify-reset-code.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 
 /** How long a password-reset code stays valid, in minutes. */
 const RESET_TOKEN_TTL_MINUTES = 5;
+
+/** How long an email-verification code stays valid, in minutes. */
+const EMAIL_VERIFICATION_TTL_MINUTES = 5;
 
 @Injectable()
 export class AuthService {
@@ -51,8 +55,16 @@ export class AuthService {
       },
     });
 
+    // Send the email-verification code (best-effort — never block signup).
+    await this.sendEmailVerificationCode(user.id, user.email).catch((e) => {
+      console.error('[register] Failed to send verification email →', e);
+    });
+
     return {
       access_token: this.generateToken(user.id, user.email),
+      emailVerified: user.emailVerified,
+      username: user.username,
+      email: user.email,
     };
   }
 
@@ -73,7 +85,96 @@ export class AuthService {
 
     return {
       access_token: this.generateToken(user.id, user.email),
+      emailVerified: user.emailVerified,
+      username: user.username,
+      email: user.email,
     };
+  }
+
+  /**
+   * Verifies the current user's email using the 6-digit code they were sent.
+   */
+  async verifyEmail(userId: number, dto: VerifyEmailDto) {
+    const tokenHash = this.hashToken(dto.code);
+    const record = await this.prisma.emailVerificationToken.findUnique({
+      where: { tokenHash },
+    });
+
+    if (!record || record.userId !== userId || record.usedAt) {
+      throw new BadRequestException('Invalid verification code');
+    }
+    if (record.expiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('This verification code has expired');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { emailVerified: true },
+      }),
+      this.prisma.emailVerificationToken.update({
+        where: { id: record.id },
+        data: { usedAt: new Date() },
+      }),
+    ]);
+
+    return { emailVerified: true };
+  }
+
+  /**
+   * Re-sends a fresh email-verification code to the current user.
+   * If the email is already verified, reports that instead of sending.
+   */
+  async resendVerification(userId: number) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+    if (user.emailVerified) {
+      return {
+        alreadyVerified: true,
+        message: 'Your email is already verified.',
+      };
+    }
+    await this.sendEmailVerificationCode(user.id, user.email);
+    return {
+      alreadyVerified: false,
+      message: 'A new verification code has been sent.',
+    };
+  }
+
+  /**
+   * Generates, stores and emails a fresh 6-digit verification code for a user.
+   */
+  private async sendEmailVerificationCode(userId: number, email: string) {
+    // Invalidate any previous pending codes for this user.
+    await this.prisma.emailVerificationToken.deleteMany({
+      where: { userId, usedAt: null },
+    });
+
+    let rawCode = '';
+    let tokenHash = '';
+    for (let attempt = 0; attempt < 5; attempt++) {
+      rawCode = this.generateSixDigitCode();
+      tokenHash = this.hashToken(rawCode);
+      const clash = await this.prisma.emailVerificationToken.findUnique({
+        where: { tokenHash },
+      });
+      if (!clash) break;
+    }
+
+    const expiresAt = new Date(
+      Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000,
+    );
+    await this.prisma.emailVerificationToken.create({
+      data: { userId, tokenHash, expiresAt },
+    });
+
+    await this.mail.sendEmailVerification(
+      email,
+      rawCode,
+      EMAIL_VERIFICATION_TTL_MINUTES,
+    );
   }
 
   /**
