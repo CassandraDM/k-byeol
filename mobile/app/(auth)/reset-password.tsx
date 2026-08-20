@@ -21,18 +21,15 @@ const isValidPassword = (v: string) => v.length >= 8;
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ token?: string }>();
+  const params = useLocalSearchParams<{ code?: string }>();
+  // The code was already verified on the previous screen.
+  const code = typeof params.code === "string" ? params.code : "";
+
   const { resetPassword, isLoading, error, clearError } = useAuthStore();
 
-  // Token can arrive from the email deep link (mobile://reset-password?token=…)
-  // or be pasted manually when the link can't open the app.
-  const tokenFromLink = typeof params.token === "string" ? params.token : "";
-
-  const [token, setToken] = useState(tokenFromLink);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [fieldErrors, setFieldErrors] = useState<{
-    token?: string;
     password?: string;
     confirm?: string;
   }>({});
@@ -40,7 +37,6 @@ export default function ResetPasswordScreen() {
 
   const validate = () => {
     const errors: typeof fieldErrors = {};
-    if (!token.trim()) errors.token = "Paste the code from your email.";
     if (!password) errors.password = "Password is required.";
     else if (!isValidPassword(password))
       errors.password = "Password must be at least 8 characters.";
@@ -53,7 +49,7 @@ export default function ResetPasswordScreen() {
   const handleSubmit = async () => {
     clearError();
     if (!validate()) return;
-    const ok = await resetPassword(token.trim(), password);
+    const ok = await resetPassword(code, password);
     if (ok) setDone(true);
   };
 
@@ -80,7 +76,7 @@ export default function ResetPasswordScreen() {
               {done ? (
                 <>
                   <Text style={styles.subtitle}>
-                    Your password has been reset 🎉{"\n"}You can now log in with
+                    Your password has been reset.{"\n"}You can now log in with
                     your new password.
                   </Text>
                   <Pressable
@@ -113,39 +109,7 @@ export default function ResetPasswordScreen() {
                     </View>
                   ) : null}
 
-                  {/* Code — hidden once it arrives via the deep link */}
-                  {!tokenFromLink ? (
-                    <>
-                      <Text style={styles.label}>Reset code</Text>
-                      <TextInput
-                        style={[
-                          styles.input,
-                          fieldErrors.token ? styles.inputError : null,
-                        ]}
-                        value={token}
-                        onChangeText={(v) => {
-                          setToken(v);
-                          setFieldErrors((e) => ({ ...e, token: undefined }));
-                        }}
-                        placeholder="Paste the code from your email"
-                        placeholderTextColor="#DAC5EA"
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                      />
-                      {fieldErrors.token ? (
-                        <Text style={styles.fieldError}>{fieldErrors.token}</Text>
-                      ) : null}
-                    </>
-                  ) : null}
-
-                  <Text
-                    style={[
-                      styles.label,
-                      !tokenFromLink ? { marginTop: 14 } : null,
-                    ]}
-                  >
-                    New password
-                  </Text>
+                  <Text style={styles.label}>New password</Text>
                   <TextInput
                     style={[
                       styles.input,

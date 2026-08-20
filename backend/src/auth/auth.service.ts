@@ -6,16 +6,17 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomInt } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyResetCodeDto } from './dto/verify-reset-code.dto';
 
-/** How long a password-reset token stays valid, in minutes. */
-const RESET_TOKEN_TTL_MINUTES = 30;
+/** How long a password-reset code stays valid, in minutes. */
+const RESET_TOKEN_TTL_MINUTES = 5;
 
 @Injectable()
 export class AuthService {
@@ -101,8 +102,19 @@ export class AuthService {
       where: { userId: user.id, usedAt: null },
     });
 
-    const rawToken = randomBytes(32).toString('hex');
-    const tokenHash = this.hashToken(rawToken);
+    // Generate a 6-digit code. Retry on the (very rare) chance the hash of a
+    // freshly generated code already exists for another pending reset.
+    let rawToken = '';
+    let tokenHash = '';
+    for (let attempt = 0; attempt < 5; attempt++) {
+      rawToken = this.generateSixDigitCode();
+      tokenHash = this.hashToken(rawToken);
+      const clash = await this.prisma.passwordResetToken.findUnique({
+        where: { tokenHash },
+      });
+      if (!clash) break;
+    }
+
     const expiresAt = new Date(
       Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000,
     );
@@ -121,23 +133,20 @@ export class AuthService {
   }
 
   /**
-   * Consumes a reset token and updates the user's password.
-   * Throws on an invalid, already-used or expired token.
+   * Checks that a reset code is valid (exists, not used, not expired) WITHOUT
+   * consuming it. Used to gate the "enter new password" step in the app.
+   */
+  async verifyResetCode(dto: VerifyResetCodeDto) {
+    await this.findValidToken(dto.token);
+    return { valid: true };
+  }
+
+  /**
+   * Consumes a reset code and updates the user's password.
+   * Throws on an invalid, already-used or expired code.
    */
   async resetPassword(dto: ResetPasswordDto) {
-    const tokenHash = this.hashToken(dto.token);
-
-    const record = await this.prisma.passwordResetToken.findUnique({
-      where: { tokenHash },
-    });
-
-    if (!record || record.usedAt) {
-      throw new BadRequestException('Invalid or already-used reset token');
-    }
-
-    if (record.expiresAt.getTime() < Date.now()) {
-      throw new BadRequestException('This reset link has expired');
-    }
+    const record = await this.findValidToken(dto.token);
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
@@ -156,9 +165,33 @@ export class AuthService {
     return { message: 'Your password has been reset. You can now log in.' };
   }
 
-  /** SHA-256 hash of a reset token — only the hash is ever stored. */
+  /**
+   * Looks up a reset code and asserts it is usable (exists, not used, not
+   * expired). Returns the record, or throws a BadRequestException.
+   */
+  private async findValidToken(token: string) {
+    const tokenHash = this.hashToken(token);
+    const record = await this.prisma.passwordResetToken.findUnique({
+      where: { tokenHash },
+    });
+
+    if (!record || record.usedAt) {
+      throw new BadRequestException('Invalid or already-used reset code');
+    }
+    if (record.expiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('This reset code has expired');
+    }
+    return record;
+  }
+
+  /** SHA-256 hash of a reset code — only the hash is ever stored. */
   private hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
+  }
+
+  /** Cryptographically random 6-digit code, zero-padded (e.g. "042317"). */
+  private generateSixDigitCode(): string {
+    return randomInt(0, 1_000_000).toString().padStart(6, '0');
   }
 
   private generateToken(userId: number, email: string): string {

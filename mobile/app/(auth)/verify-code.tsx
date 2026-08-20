@@ -1,6 +1,6 @@
 import { BlurView } from "expo-blur";
-import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -17,32 +17,50 @@ import { HolographicBackground } from "@/components/ui/holographic-background";
 import { useAuthStore } from "@/stores/auth-store";
 import { CustomFonts, Palette } from "@/constants/theme";
 
-const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+const RESEND_COOLDOWN = 30; // seconds
 
-export default function ForgotPasswordScreen() {
+export default function VerifyCodeScreen() {
   const router = useRouter();
-  const { forgotPassword, isLoading, error, clearError } = useAuthStore();
+  const params = useLocalSearchParams<{ email?: string }>();
+  const email = typeof params.email === "string" ? params.email : "";
 
-  const [email, setEmail] = useState("");
+  const { verifyResetCode, forgotPassword, isLoading, error, clearError } =
+    useAuthStore();
+
+  const [code, setCode] = useState("");
   const [fieldError, setFieldError] = useState<string | undefined>();
+  const [seconds, setSeconds] = useState(RESEND_COOLDOWN);
+  const [resending, setResending] = useState(false);
 
-  const handleSubmit = async () => {
+  // Countdown for the "resend" button.
+  useEffect(() => {
+    if (seconds <= 0) return;
+    const t = setTimeout(() => setSeconds((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [seconds]);
+
+  const handleVerify = async () => {
     clearError();
-    if (!email.trim()) {
-      setFieldError("Email is required.");
-      return;
-    }
-    if (!isValidEmail(email)) {
-      setFieldError("Enter a valid email address.");
+    if (code.trim().length !== 6) {
+      setFieldError("Enter the 6-digit code from your email.");
       return;
     }
     setFieldError(undefined);
-    const ok = await forgotPassword(email.trim());
+    const ok = await verifyResetCode(code.trim());
     if (ok) {
-      // Go straight to the code screen — it carries the email for "resend".
-      router.push(
-        `/(auth)/verify-code?email=${encodeURIComponent(email.trim())}` as any,
-      );
+      router.push(`/(auth)/reset-password?code=${code.trim()}` as any);
+    }
+  };
+
+  const handleResend = async () => {
+    if (seconds > 0 || resending || !email) return;
+    clearError();
+    setResending(true);
+    const ok = await forgotPassword(email);
+    setResending(false);
+    if (ok) {
+      setCode("");
+      setSeconds(RESEND_COOLDOWN);
     }
   };
 
@@ -64,10 +82,10 @@ export default function ForgotPasswordScreen() {
             <View style={styles.cardOverlay} />
 
             <View style={styles.cardContent}>
-              <Text style={styles.title}>Forgot password?</Text>
+              <Text style={styles.title}>Enter code</Text>
               <Text style={styles.subtitle}>
-                Enter the email tied to your account and we&apos;ll send you a
-                6-digit code to reset your password.
+                We sent a 6-digit code to{"\n"}
+                <Text style={styles.emphasis}>{email || "your email"}</Text>.
               </Text>
 
               {error ? (
@@ -76,40 +94,62 @@ export default function ForgotPasswordScreen() {
                 </View>
               ) : null}
 
-              <Text style={styles.label}>Email</Text>
+              <Text style={styles.label}>6-digit code</Text>
               <TextInput
-                style={[styles.input, fieldError ? styles.inputError : null]}
-                value={email}
+                style={[
+                  styles.input,
+                  styles.codeInput,
+                  fieldError ? styles.inputError : null,
+                ]}
+                value={code}
                 onChangeText={(v) => {
-                  setEmail(v);
+                  setCode(v.replace(/[^0-9]/g, ""));
                   setFieldError(undefined);
                 }}
-                placeholder="midzy@email.com"
+                placeholder="123456"
                 placeholderTextColor="#DAC5EA"
+                keyboardType="number-pad"
+                maxLength={6}
+                autoFocus
                 autoCapitalize="none"
-                keyboardType="email-address"
                 autoCorrect={false}
               />
               {fieldError ? (
                 <Text style={styles.fieldError}>{fieldError}</Text>
               ) : null}
 
+              {/* Resend with cooldown */}
+              <View style={styles.resendRow}>
+                {seconds > 0 ? (
+                  <Text style={styles.resendMuted}>
+                    Resend code in {seconds}s
+                  </Text>
+                ) : (
+                  <Text style={styles.resendLink} onPress={handleResend}>
+                    {resending ? "Sending…" : "Resend code"}
+                  </Text>
+                )}
+              </View>
+
               <Pressable
                 style={({ pressed }) => [
                   styles.button,
                   pressed && styles.buttonPressed,
                 ]}
-                onPress={handleSubmit}
+                onPress={handleVerify}
                 disabled={isLoading}
               >
-                {isLoading ? (
+                {isLoading && !resending ? (
                   <ActivityIndicator color={Palette.white} />
                 ) : (
-                  <Text style={styles.buttonText}>Send code</Text>
+                  <Text style={styles.buttonText}>Continue</Text>
                 )}
               </Pressable>
 
-              <Text style={styles.backLink} onPress={() => router.back()}>
+              <Text
+                style={styles.backLink}
+                onPress={() => router.replace("/(auth)/sign-in" as any)}
+              >
                 Back to log in
               </Text>
             </View>
@@ -158,6 +198,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 22,
   },
+  emphasis: { color: Palette.pink },
 
   errorBanner: {
     backgroundColor: "rgba(193, 0, 80, 0.12)",
@@ -190,8 +231,30 @@ const styles = StyleSheet.create({
     color: "#E07EFF",
     fontFamily: CustomFonts.syongsyong,
   },
+  codeInput: {
+    textAlign: "center",
+    letterSpacing: 8,
+    fontSize: 22,
+  },
   inputError: { borderWidth: 1.5, borderColor: "#C10050" },
   fieldError: { color: "#C10050", fontSize: 12, marginTop: 4 },
+
+  resendRow: {
+    marginTop: 12,
+    alignItems: "center",
+  },
+  resendMuted: {
+    fontFamily: CustomFonts.moyamoya,
+    fontSize: 13,
+    color: Palette.white,
+    opacity: 0.7,
+  },
+  resendLink: {
+    fontFamily: CustomFonts.moyamoya,
+    fontSize: 13,
+    color: Palette.pink,
+    textDecorationLine: "underline",
+  },
 
   button: {
     marginTop: 24,

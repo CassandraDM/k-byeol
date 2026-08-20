@@ -37,6 +37,7 @@ interface AuthState {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (username: string, email: string, password: string) => Promise<void>;
   forgotPassword: (email: string) => Promise<boolean>;
+  verifyResetCode: (code: string) => Promise<boolean>;
   resetPassword: (token: string, password: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   setOnboardingComplete: () => Promise<void>;
@@ -195,6 +196,49 @@ export const useAuthStore = create<AuthState>((set) => ({
       console.error(
         "[forgotPassword] Network error →",
         `${API_URL}/auth/forgot-password`,
+        e,
+      );
+      set({
+        error: "Can't reach the server right now. Check your connection.",
+        isLoading: false,
+      });
+      return false;
+    }
+  },
+
+  verifyResetCode: async (code: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch(`${API_URL}/auth/verify-reset-code`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: code }),
+      });
+
+      if (res.status === 400) {
+        const body = await res.json().catch(() => ({}));
+        const messages: string[] = Array.isArray(body.message)
+          ? body.message
+          : [body.message];
+        const friendly = messages
+          .map((m) => VALIDATION_MAP[m] ?? m)
+          .join("\n");
+        set({ error: friendly, isLoading: false });
+        return false;
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.error("[verifyResetCode] Error response →", res.status, body);
+        set({ error: "Hmm… something’s off. Try again.", isLoading: false });
+        return false;
+      }
+
+      set({ isLoading: false });
+      return true;
+    } catch (e) {
+      console.error(
+        "[verifyResetCode] Network error →",
+        `${API_URL}/auth/verify-reset-code`,
         e,
       );
       set({

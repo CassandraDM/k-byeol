@@ -52,39 +52,28 @@ export class MailService {
     resetToken: string,
     expiresInMinutes: number,
   ): Promise<void> {
-    const base = process.env.APP_RESET_URL || 'mobile://reset-password';
-    const link = `${base}?token=${resetToken}`;
-
-    const subject = 'Reset your K-별 password';
+    const subject = 'Reset your password';
     const text = [
-      'Hi,',
+      'Reset your password',
       '',
-      'We received a request to reset your K-별 password.',
+      'We received a request to reset your password.',
+      `Enter this passcode to reset your password. It will expire in ${expiresInMinutes} minutes.`,
       '',
-      `Open the app using this link: ${link}`,
-      '',
-      'Or paste this code into the "Reset password" screen:',
       resetToken,
       '',
-      `This code expires in ${expiresInMinutes} minutes. If you didn't request a`,
-      "password reset, you can safely ignore this email — your password won't change.",
+      'If you did not make this request, you can safely ignore this email.',
+      '',
+      'P.S. Sent with love by Nox, our cat and chief email officer',
     ].join('\n');
 
     const html = `
-      <div style="font-family: sans-serif; line-height: 1.5; color: #1a1a1a;">
-        <h2 style="color: #CF7EF2;">Reset your K-별 password</h2>
+      <div style="font-family: sans-serif; line-height: 1.6; color: #1a1a1a; max-width: 480px;">
+        <h2 style="color: #7A3FB0; margin-bottom: 16px;">Reset your password</h2>
         <p>We received a request to reset your password.</p>
-        <p>
-          <a href="${link}"
-             style="display:inline-block;padding:12px 24px;background:#CF7EF2;color:#fff;
-                    border-radius:20px;text-decoration:none;">Reset password</a>
-        </p>
-        <p>Or paste this code into the <strong>Reset password</strong> screen:</p>
-        <p style="font-size:18px;font-weight:bold;letter-spacing:1px;word-break:break-all;">${resetToken}</p>
-        <p style="color:#666;font-size:13px;">
-          This code expires in ${expiresInMinutes} minutes. If you didn't request a
-          password reset, you can safely ignore this email.
-        </p>
+        <p>Enter this passcode to reset your password. It will expire in ${expiresInMinutes} minutes.</p>
+        <p style="font-size:34px;font-weight:bold;letter-spacing:8px;color:#7A3FB0;margin:20px 0;">${resetToken}</p>
+        <p style="color:#666;font-size:13px;">If you did not make this request, you can safely ignore this email.</p>
+        <p style="color:#999;font-size:12px;margin-top:18px;">P.S. Sent with love by Nox, our cat and chief email officer</p>
       </div>`;
 
     // 1. Resend
@@ -122,8 +111,7 @@ export class MailService {
     // 3. Console fallback (local dev)
     this.logger.log(
       `[DEV] Password reset email for ${to}\n` +
-        `  Link : ${link}\n` +
-        `  Token: ${resetToken}\n` +
+        `  Passcode: ${resetToken}\n` +
         `  Expires in ${expiresInMinutes} min`,
     );
   }

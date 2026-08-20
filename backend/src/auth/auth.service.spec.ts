@@ -75,8 +75,9 @@ describe('AuthService — password reset', () => {
       expect(stored.tokenHash).toMatch(/^[a-f0-9]{64}$/); // sha256 hex
       expect(stored.expiresAt.getTime()).toBeGreaterThan(Date.now());
 
-      // The email gets the RAW token, and its hash matches what we stored
+      // The email gets the RAW code (6 digits), and its hash matches what we stored
       const rawToken: string = mail.sendPasswordReset.mock.calls[0][1];
+      expect(rawToken).toMatch(/^\d{6}$/);
       const expectedHash = createHash('sha256')
         .update(rawToken)
         .digest('hex');
@@ -88,6 +89,31 @@ describe('AuthService — password reset', () => {
       );
 
       expect(res.message).toMatch(/if an account exists/i);
+    });
+  });
+
+  describe('verifyResetCode', () => {
+    it('accepts a valid code without consuming it', async () => {
+      prisma.passwordResetToken.findUnique.mockResolvedValue({
+        id: 1,
+        userId: 7,
+        usedAt: null,
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+
+      const res = await service.verifyResetCode({ token: '123456' });
+
+      expect(res).toEqual({ valid: true });
+      // Must NOT mark the code used or change the password
+      expect(prisma.passwordResetToken.update).not.toHaveBeenCalled();
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects an invalid or expired code', async () => {
+      prisma.passwordResetToken.findUnique.mockResolvedValue(null);
+      await expect(
+        service.verifyResetCode({ token: '000000' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
