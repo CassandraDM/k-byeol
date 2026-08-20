@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/auth-store';
 
 export default function SplashScreen() {
   const router = useRouter();
-  const { hydrate, isAuthenticated } = useAuthStore();
+  const { hydrate, isAuthenticated, emailVerified } = useAuthStore();
 
   useEffect(() => {
     const init = async () => {
@@ -20,14 +20,20 @@ export default function SplashScreen() {
   useEffect(() => {
     const timeout = setTimeout(() => {
       if (isAuthenticated) {
-        router.replace('/(tabs)' as any);
+        if (!emailVerified) {
+          // Logged in but email not confirmed → prompt to verify (no email is
+          // sent until the user taps "Send code" on that screen).
+          router.replace('/(auth)/verify-prompt' as any);
+        } else {
+          router.replace('/(tabs)' as any);
+        }
       } else {
         router.replace('/(auth)/sign-in' as any);
       }
     }, 2000);
 
     return () => clearTimeout(timeout);
-  }, [isAuthenticated]);
+  }, [isAuthenticated, emailVerified]);
 
   return (
     <View style={styles.container}>

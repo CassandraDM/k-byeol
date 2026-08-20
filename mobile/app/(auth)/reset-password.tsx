@@ -250,6 +250,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#E07EFF",
     fontFamily: CustomFonts.syongsyong,
+    letterSpacing: 0,
   },
   inputError: { borderWidth: 1.5, borderColor: "#C10050" },
   fieldError: { color: "#C10050", fontSize: 12, marginTop: 4 },

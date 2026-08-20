@@ -25,12 +25,18 @@ function parseValidationErrors(messages: string[]): string {
 
 const JWT_KEY = "kbyeol_jwt";
 const ONBOARDING_KEY = "kbyeol_onboarding_done";
+const EMAIL_VERIFIED_KEY = "kbyeol_email_verified";
+const USERNAME_KEY = "kbyeol_username";
+const EMAIL_KEY = "kbyeol_email";
 
 interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
   isNewUser: boolean;
   hasCompletedOnboarding: boolean;
+  emailVerified: boolean;
+  username: string | null;
+  email: string | null;
   isLoading: boolean;
   error: string | null;
   hydrate: () => Promise<void>;
@@ -39,16 +45,21 @@ interface AuthState {
   forgotPassword: (email: string) => Promise<boolean>;
   verifyResetCode: (code: string) => Promise<boolean>;
   resetPassword: (token: string, password: string) => Promise<boolean>;
+  verifyEmail: (code: string) => Promise<boolean>;
+  resendVerification: () => Promise<"sent" | "already-verified" | "error">;
   signOut: () => Promise<void>;
   setOnboardingComplete: () => Promise<void>;
   clearError: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   token: null,
   isAuthenticated: false,
   isNewUser: false,
   hasCompletedOnboarding: false,
+  emailVerified: false,
+  username: null,
+  email: null,
   isLoading: false,
   error: null,
 
@@ -56,11 +67,17 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const token = await SecureStore.getItemAsync(JWT_KEY);
       const onboardingDone = await SecureStore.getItemAsync(ONBOARDING_KEY);
+      const emailVerified = await SecureStore.getItemAsync(EMAIL_VERIFIED_KEY);
+      const username = await SecureStore.getItemAsync(USERNAME_KEY);
+      const email = await SecureStore.getItemAsync(EMAIL_KEY);
       if (token) {
         set({
           token,
           isAuthenticated: true,
           hasCompletedOnboarding: onboardingDone === "true",
+          emailVerified: emailVerified === "true",
+          username,
+          email,
         });
       }
     } catch {
@@ -97,10 +114,22 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       const data = await res.json();
       await SecureStore.setItemAsync(JWT_KEY, data.access_token);
+      const emailVerified = data.emailVerified === true;
+      await SecureStore.setItemAsync(
+        EMAIL_VERIFIED_KEY,
+        emailVerified ? "true" : "false",
+      );
+      const username = data.username ?? null;
+      const emailAddr = data.email ?? email;
+      if (username) await SecureStore.setItemAsync(USERNAME_KEY, username);
+      if (emailAddr) await SecureStore.setItemAsync(EMAIL_KEY, emailAddr);
       set({
         token: data.access_token,
         isAuthenticated: true,
         isNewUser: false,
+        emailVerified,
+        username,
+        email: emailAddr,
         isLoading: false,
       });
     } catch (e) {
@@ -150,10 +179,17 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       const data = await res.json();
       await SecureStore.setItemAsync(JWT_KEY, data.access_token);
+      // New accounts start unverified.
+      await SecureStore.setItemAsync(EMAIL_VERIFIED_KEY, "false");
+      await SecureStore.setItemAsync(USERNAME_KEY, data.username ?? username);
+      await SecureStore.setItemAsync(EMAIL_KEY, data.email ?? email);
       set({
         token: data.access_token,
         isAuthenticated: true,
         isNewUser: true,
+        emailVerified: false,
+        username: data.username ?? username,
+        email: data.email ?? email,
         isLoading: false,
       });
     } catch (e) {
@@ -294,11 +330,102 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
+  verifyEmail: async (code: string) => {
+    const { token } = get();
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch(`${API_URL}/auth/verify-email`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ code }),
+      });
+
+      if (res.status === 400) {
+        const body = await res.json().catch(() => ({}));
+        const messages: string[] = Array.isArray(body.message)
+          ? body.message
+          : [body.message];
+        set({
+          error: messages.map((m) => VALIDATION_MAP[m] ?? m).join("\n"),
+          isLoading: false,
+        });
+        return false;
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.error("[verifyEmail] Error response →", res.status, body);
+        set({ error: "Hmm… something’s off. Try again.", isLoading: false });
+        return false;
+      }
+
+      await SecureStore.setItemAsync(EMAIL_VERIFIED_KEY, "true");
+      set({ emailVerified: true, isLoading: false });
+      return true;
+    } catch (e) {
+      console.error(
+        "[verifyEmail] Network error →",
+        `${API_URL}/auth/verify-email`,
+        e,
+      );
+      set({
+        error: "Can't reach the server right now. Check your connection.",
+        isLoading: false,
+      });
+      return false;
+    }
+  },
+
+  resendVerification: async () => {
+    const { token } = get();
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch(`${API_URL}/auth/resend-verification`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.error("[resendVerification] Error response →", res.status, body);
+        set({ error: "Hmm… something’s off. Try again.", isLoading: false });
+        return "error";
+      }
+      const body = await res.json().catch(() => ({}));
+      if (body.alreadyVerified === true) {
+        // Sync local state — the account is already verified.
+        await SecureStore.setItemAsync(EMAIL_VERIFIED_KEY, "true");
+        set({ emailVerified: true, isLoading: false });
+        return "already-verified";
+      }
+      set({ isLoading: false });
+      return "sent";
+    } catch (e) {
+      console.error(
+        "[resendVerification] Network error →",
+        `${API_URL}/auth/resend-verification`,
+        e,
+      );
+      set({
+        error: "Can't reach the server right now. Check your connection.",
+        isLoading: false,
+      });
+      return "error";
+    }
+  },
+
   signOut: async () => {
     await SecureStore.deleteItemAsync(JWT_KEY);
     await SecureStore.deleteItemAsync(ONBOARDING_KEY);
+    await SecureStore.deleteItemAsync(EMAIL_VERIFIED_KEY);
+    await SecureStore.deleteItemAsync(USERNAME_KEY);
+    await SecureStore.deleteItemAsync(EMAIL_KEY);
     useOnboardingStore.getState().reset();
-    set({ token: null, isAuthenticated: false, isNewUser: false, hasCompletedOnboarding: false, error: null });
+    set({ token: null, isAuthenticated: false, isNewUser: false, hasCompletedOnboarding: false, emailVerified: false, username: null, email: null, error: null });
   },
 
   setOnboardingComplete: async () => {
