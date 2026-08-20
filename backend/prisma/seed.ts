@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { PrismaClient, EventType, ConversationType, User, Event } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
@@ -254,12 +255,14 @@ const SEED_EVENTS = [
 ];
 
 async function main() {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error(
+      'DATABASE_URL is not set — add it to your .env (see .env.example).',
+    );
+  }
   const pool = new Pool({
-    host: process.env.DB_HOST || 'aws-1-eu-west-3.pooler.supabase.com',
-    port: Number(process.env.DB_PORT) || 6543,
-    user: process.env.DB_USER || 'postgres.jictcppytorltywhnmjf',
-    password: process.env.DB_PASSWORD || 'Chickenhasmeat1509!',
-    database: process.env.DB_NAME || 'postgres',
+    connectionString,
     ssl: { rejectUnauthorized: false },
   });
 

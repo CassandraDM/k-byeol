@@ -274,6 +274,18 @@ export default function SignInScreen() {
                 <Text style={styles.fieldError}>{fieldErrors.password}</Text>
               ) : null}
 
+              {/* Forgot password — sign-in only */}
+              {mode === "sign-in" ? (
+                <Text
+                  style={styles.forgotLink}
+                  onPress={() =>
+                    router.push("/(auth)/forgot-password" as any)
+                  }
+                >
+                  Forgot password?
+                </Text>
+              ) : null}
+
               {/* Confirm password — animated, sign-up only */}
               <Animated.View style={confirmField.animatedStyle}>
                 {!confirmField.measured && (
@@ -439,6 +451,14 @@ const styles = StyleSheet.create({
     fontFamily: CustomFonts.moyamoya,
     color: Palette.pink,
     textDecorationLine: "underline",
+  },
+  forgotLink: {
+    fontFamily: CustomFonts.moyamoya,
+    color: Palette.white,
+    fontSize: 12,
+    textAlign: "right",
+    textDecorationLine: "underline",
+    marginTop: 8,
   },
 
   // ── Button ────────────────────────────────────────────────────────────────
