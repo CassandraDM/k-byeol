@@ -7,14 +7,22 @@ const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
 let _supabase: SupabaseClient | null = null;
 
-function getSupabase(): SupabaseClient {
+export function getSupabase(): SupabaseClient {
   if (!_supabase) {
     if (!SUPABASE_ANON_KEY) {
       throw new Error(
         'Missing EXPO_PUBLIC_SUPABASE_ANON_KEY. Add it to your .env file.',
       );
     }
-    _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        // React Native: OAuth uses the PKCE flow; we bridge to our own JWT
+        // immediately, so there's no Supabase session to persist.
+        flowType: 'pkce',
+        detectSessionInUrl: false,
+        persistSession: false,
+      },
+    });
   }
   return _supabase;
 }

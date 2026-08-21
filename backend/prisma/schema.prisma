@@ -20,6 +20,8 @@ model User {
   role          String   @default("user") @db.VarChar(20)
   bio           String?
   emailVerified Boolean  @default(false) @map("email_verified")
+  // How the account authenticates: "email" (password) | "google" | "apple"
+  provider      String   @default("email") @db.VarChar(20)
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 

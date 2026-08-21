@@ -1,1 +1,4 @@
 .claude/
+
+# Secrets — never commit
+*.p8

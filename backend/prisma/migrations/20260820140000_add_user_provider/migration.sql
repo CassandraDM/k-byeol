@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "users" ADD COLUMN "provider" VARCHAR(20) NOT NULL DEFAULT 'email';
