@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import MapView from 'react-native-maps';
+import MapView from '@/components/ui/map';
 
 import { useAuthStore } from '@/stores/auth-store';
 import { apiFetch } from '@/utils/api';

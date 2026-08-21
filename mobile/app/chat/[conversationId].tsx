@@ -184,28 +184,28 @@ export default function ChatThreadScreen() {
     return (
       <View
         style={[
-          styles.messageRow,
-          isMine ? styles.messageRowMine : styles.messageRowOther,
+          styles.messageWrapper,
+          isMine ? styles.wrapperMine : styles.wrapperOther,
         ]}>
-        {!isMine && (
-          <View style={styles.avatarSlot}>
-            {showSender &&
-              (item.sender.avatar ? (
-                <Image
-                  source={{ uri: item.sender.avatar }}
-                  style={styles.msgAvatar}
-                />
-              ) : (
-                <View style={[styles.msgAvatar, styles.msgAvatarFallback]}>
-                  <Ionicons name="person" size={14} color="#fff" />
-                </View>
-              ))}
-          </View>
+        {showSender && (
+          <Text style={styles.senderName}>{item.sender.username}</Text>
         )}
 
-        <View style={styles.messageBody}>
-          {showSender && (
-            <Text style={styles.senderName}>{item.sender.username}</Text>
+        <View style={styles.bubbleLine}>
+          {!isMine && (
+            <View style={styles.avatarSlot}>
+              {showSender &&
+                (item.sender.avatar ? (
+                  <Image
+                    source={{ uri: item.sender.avatar }}
+                    style={styles.msgAvatar}
+                  />
+                ) : (
+                  <View style={[styles.msgAvatar, styles.msgAvatarFallback]}>
+                    <Ionicons name="person" size={14} color="#fff" />
+                  </View>
+                ))}
+            </View>
           )}
           <View
             style={[
@@ -216,10 +216,15 @@ export default function ChatThreadScreen() {
               {item.text}
             </Text>
           </View>
-          <Text style={[styles.timestamp, isMine && styles.timestampMine]}>
-            {formatTime(item.createdAt)}
-          </Text>
         </View>
+
+        <Text
+          style={[
+            styles.timestamp,
+            isMine ? styles.timestampMine : styles.timestampOther,
+          ]}>
+          {formatTime(item.createdAt)}
+        </Text>
       </View>
     );
   };
@@ -326,22 +331,24 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     gap: 4,
   },
-  messageRow: {
-    flexDirection: 'row',
-    gap: 8,
+  messageWrapper: {
     maxWidth: '85%',
   },
-  messageRowMine: {
+  wrapperMine: {
     alignSelf: 'flex-end',
-    justifyContent: 'flex-end',
   },
-  messageRowOther: {
+  wrapperOther: {
     alignSelf: 'flex-start',
+  },
+  bubbleLine: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
   },
   avatarSlot: {
     width: 28,
-    alignItems: 'flex-end',
-    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginBottom: 12,
   },
   msgAvatar: {
     width: 28,
@@ -353,21 +360,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  messageBody: {
-    gap: 2,
-  },
   senderName: {
     fontFamily: CustomFonts.moyamoya,
     fontSize: 12,
     color: Palette.purple,
-    marginLeft: 4,
+    marginLeft: 36,
     marginBottom: 2,
   },
   bubble: {
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 16,
-    maxWidth: '100%',
+    flexShrink: 1,
   },
   bubbleOther: {
     backgroundColor: '#fff',
@@ -390,12 +394,13 @@ const styles = StyleSheet.create({
     fontFamily: CustomFonts.outfit,
     fontSize: 10,
     color: Palette.pink,
-    marginLeft: 6,
     marginTop: 2,
+  },
+  timestampOther: {
+    marginLeft: 36,
   },
   timestampMine: {
     alignSelf: 'flex-end',
-    marginLeft: 0,
     marginRight: 6,
   },
   inputBar: {

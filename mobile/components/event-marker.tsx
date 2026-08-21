@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Callout, Marker } from 'react-native-maps';
+import { Callout, Marker } from '@/components/ui/map';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 

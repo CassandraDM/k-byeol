@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import MapView, { Marker } from "react-native-maps";
+import MapView, { Marker } from "@/components/ui/map";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Image } from "expo-image";
 
