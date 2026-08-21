@@ -42,6 +42,9 @@ lerna-debug.log*
 .env.production.local
 .env.local
 
+# Apple Sign in with Apple private keys — never commit
+*.p8
+
 # temp directory
 .temp
 .tmp

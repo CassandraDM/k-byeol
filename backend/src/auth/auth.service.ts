@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { createHash, randomInt } from 'crypto';
+import { createHash, randomBytes, randomInt } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { RegisterDto } from './dto/register.dto';
@@ -15,6 +15,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyResetCodeDto } from './dto/verify-reset-code.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { SocialLoginDto } from './dto/social-login.dto';
 
 /** How long a password-reset code stays valid, in minutes. */
 const RESET_TOKEN_TTL_MINUTES = 5;
@@ -88,6 +89,65 @@ export class AuthService {
       emailVerified: user.emailVerified,
       username: user.username,
       email: user.email,
+    };
+  }
+
+  /**
+   * Signs in (or signs up) a user via a social provider (Google / Apple).
+   *
+   * The client performs the OAuth flow through Supabase and sends us the
+   * resulting Supabase access token. We validate it against Supabase, then
+   * find-or-create the matching app user and issue our own JWT.
+   */
+  async socialLogin(dto: SocialLoginDto) {
+    const supabaseUser = await this.fetchSupabaseUser(dto.accessToken);
+    const email = supabaseUser.email?.toLowerCase();
+    if (!email) {
+      throw new BadRequestException(
+        'Your social account did not share an email address.',
+      );
+    }
+
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+
+    if (existing) {
+      // Same email but a different sign-in method → clear error (no linking).
+      if (existing.provider !== dto.provider) {
+        throw new ConflictException(
+          'An account with this email already exists. Please sign in with your email and password.',
+        );
+      }
+      return {
+        access_token: this.generateToken(existing.id, existing.email),
+        emailVerified: existing.emailVerified,
+        username: existing.username,
+        email: existing.email,
+        isNewUser: false,
+      };
+    }
+
+    // First social login → create the profile automatically.
+    const username = await this.generateUniqueUsername(supabaseUser);
+    const randomPassword = await bcrypt.hash(
+      randomBytes(32).toString('hex'),
+      10,
+    );
+    const user = await this.prisma.user.create({
+      data: {
+        username,
+        email,
+        password: randomPassword, // unused for social accounts, but column is required
+        provider: dto.provider,
+        emailVerified: true, // Google/Apple already verified the email
+      },
+    });
+
+    return {
+      access_token: this.generateToken(user.id, user.email),
+      emailVerified: true,
+      username: user.username,
+      email: user.email,
+      isNewUser: true,
     };
   }
 
@@ -293,6 +353,58 @@ export class AuthService {
   /** Cryptographically random 6-digit code, zero-padded (e.g. "042317"). */
   private generateSixDigitCode(): string {
     return randomInt(0, 1_000_000).toString().padStart(6, '0');
+  }
+
+  /**
+   * Validates a Supabase access token by asking Supabase who it belongs to.
+   * Returns the Supabase user (email, metadata…) or throws if the token is bad.
+   */
+  private async fetchSupabaseUser(
+    accessToken: string,
+  ): Promise<{ email?: string; user_metadata?: Record<string, any> }> {
+    const url = process.env.SUPABASE_URL;
+    const anonKey = process.env.SUPABASE_ANON_KEY;
+    if (!url || !anonKey) {
+      throw new Error('SUPABASE_URL / SUPABASE_ANON_KEY are not configured.');
+    }
+
+    const res = await fetch(`${url}/auth/v1/user`, {
+      headers: {
+        apikey: anonKey,
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    if (!res.ok) {
+      throw new UnauthorizedException('Invalid social login session.');
+    }
+    return res.json() as Promise<{
+      email?: string;
+      user_metadata?: Record<string, any>;
+    }>;
+  }
+
+  /** Builds a unique username from the social profile (name or email). */
+  private async generateUniqueUsername(supabaseUser: {
+    email?: string;
+    user_metadata?: Record<string, any>;
+  }): Promise<string> {
+    const raw =
+      (supabaseUser.user_metadata?.name as string) ||
+      (supabaseUser.user_metadata?.full_name as string) ||
+      supabaseUser.email?.split('@')[0] ||
+      'user';
+    let base = raw.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 40);
+    if (base.length < 2) base = 'user';
+
+    let candidate = base;
+    let suffix = 0;
+    while (
+      await this.prisma.user.findUnique({ where: { username: candidate } })
+    ) {
+      suffix += 1;
+      candidate = `${base}${suffix}`.slice(0, 50);
+    }
+    return candidate;
   }
 
   private generateToken(userId: number, email: string): string {

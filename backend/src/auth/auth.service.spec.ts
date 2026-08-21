@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { createHash } from 'crypto';
 import { AuthService } from './auth.service';
@@ -10,7 +10,7 @@ import { MailService } from '../mail/mail.service';
 describe('AuthService — password reset', () => {
   let service: AuthService;
   let prisma: {
-    user: { findUnique: jest.Mock; update: jest.Mock };
+    user: { findUnique: jest.Mock; update: jest.Mock; create: jest.Mock };
     passwordResetToken: {
       findUnique: jest.Mock;
       create: jest.Mock;
@@ -29,7 +29,7 @@ describe('AuthService — password reset', () => {
 
   beforeEach(async () => {
     prisma = {
-      user: { findUnique: jest.fn(), update: jest.fn() },
+      user: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn() },
       passwordResetToken: {
         findUnique: jest.fn(),
         create: jest.fn(),
@@ -104,6 +104,83 @@ describe('AuthService — password reset', () => {
       );
 
       expect(res.message).toMatch(/if an account exists/i);
+    });
+  });
+
+  describe('socialLogin', () => {
+    const mockSupabaseUser = (user: object) => {
+      (global as any).fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(user),
+      });
+    };
+
+    beforeEach(() => {
+      process.env.SUPABASE_URL = 'https://ref.supabase.co';
+      process.env.SUPABASE_ANON_KEY = 'anon-key';
+    });
+    afterEach(() => {
+      (global as any).fetch = undefined;
+    });
+
+    it('creates a verified profile on first Google login', async () => {
+      mockSupabaseUser({
+        email: 'new@gmail.com',
+        user_metadata: { name: 'New Person' },
+      });
+      prisma.user.findUnique.mockResolvedValue(null); // no existing user / username free
+      prisma.user.create.mockResolvedValue({
+        id: 10,
+        username: 'NewPerson',
+        email: 'new@gmail.com',
+      });
+
+      const res = await service.socialLogin({
+        provider: 'google',
+        accessToken: 'tok',
+      });
+
+      expect(res.isNewUser).toBe(true);
+      expect(res.emailVerified).toBe(true);
+      const created = prisma.user.create.mock.calls[0][0].data;
+      expect(created.provider).toBe('google');
+      expect(created.emailVerified).toBe(true);
+      expect(created.email).toBe('new@gmail.com');
+    });
+
+    it('logs in a returning social user without recreating them', async () => {
+      mockSupabaseUser({ email: 'me@gmail.com' });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 3,
+        username: 'Me',
+        email: 'me@gmail.com',
+        provider: 'google',
+        emailVerified: true,
+      });
+
+      const res = await service.socialLogin({
+        provider: 'google',
+        accessToken: 'tok',
+      });
+
+      expect(res.isNewUser).toBe(false);
+      expect(prisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the email already belongs to a password account', async () => {
+      mockSupabaseUser({ email: 'taken@gmail.com' });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 4,
+        username: 'Taken',
+        email: 'taken@gmail.com',
+        provider: 'email', // password account
+        emailVerified: true,
+      });
+
+      await expect(
+        service.socialLogin({ provider: 'google', accessToken: 'tok' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.user.create).not.toHaveBeenCalled();
     });
   });
 

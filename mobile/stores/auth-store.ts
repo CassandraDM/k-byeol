@@ -1,6 +1,11 @@
 import { create } from "zustand";
+import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
+import * as WebBrowser from "expo-web-browser";
+import * as Linking from "expo-linking";
+import * as AppleAuthentication from "expo-apple-authentication";
 import { API_URL } from "@/constants/api";
+import { getSupabase } from "@/constants/supabase";
 import { useOnboardingStore } from "@/stores/onboarding-store";
 
 // Maps raw class-validator messages to user-friendly ones
@@ -42,6 +47,7 @@ interface AuthState {
   hydrate: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (username: string, email: string, password: string) => Promise<void>;
+  socialSignIn: (provider: "google" | "apple") => Promise<boolean>;
   forgotPassword: (email: string) => Promise<boolean>;
   verifyResetCode: (code: string) => Promise<boolean>;
   resetPassword: (token: string, password: string) => Promise<boolean>;
@@ -198,6 +204,129 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         error: "Can't reach the server right now. Check your connection.",
         isLoading: false,
       });
+    }
+  },
+
+  socialSignIn: async (provider: "google" | "apple") => {
+    set({ isLoading: true, error: null });
+    try {
+      const supabase = getSupabase();
+      let supabaseToken: string | undefined;
+
+      if (provider === "apple" && Platform.OS === "ios") {
+        // ── Native Apple sign-in (iOS) ──────────────────────────────────────
+        const credential = await AppleAuthentication.signInAsync({
+          requestedScopes: [
+            AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+            AppleAuthentication.AppleAuthenticationScope.EMAIL,
+          ],
+        });
+        if (!credential.identityToken) {
+          set({ isLoading: false });
+          return false;
+        }
+        const { data, error } = await supabase.auth.signInWithIdToken({
+          provider: "apple",
+          token: credential.identityToken,
+        });
+        if (error || !data.session) {
+          set({ error: "Sign-in failed. Try again.", isLoading: false });
+          return false;
+        }
+        supabaseToken = data.session.access_token;
+      } else {
+        // ── Web OAuth flow (Google, and Apple on Android) ───────────────────
+        const redirectTo = Linking.createURL("auth-callback");
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider,
+          options: { redirectTo, skipBrowserRedirect: true },
+        });
+        if (error || !data?.url) {
+          set({
+            error: "Couldn't start sign-in. Try again.",
+            isLoading: false,
+          });
+          return false;
+        }
+
+        const result = await WebBrowser.openAuthSessionAsync(
+          data.url,
+          redirectTo,
+        );
+        if (result.type !== "success") {
+          set({ isLoading: false }); // user dismissed / cancelled
+          return false;
+        }
+
+        const parsed = Linking.parse(result.url);
+        const code = parsed.queryParams?.code as string | undefined;
+        if (!code) {
+          set({
+            error: "Sign-in was interrupted. Try again.",
+            isLoading: false,
+          });
+          return false;
+        }
+        const { data: sessionData, error: exErr } =
+          await supabase.auth.exchangeCodeForSession(code);
+        supabaseToken = sessionData?.session?.access_token;
+        if (exErr || !supabaseToken) {
+          set({ error: "Sign-in failed. Try again.", isLoading: false });
+          return false;
+        }
+      }
+
+      // Bridge the Supabase token to our backend for an app JWT.
+      const res = await fetch(`${API_URL}/auth/social`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, accessToken: supabaseToken }),
+      });
+
+      if (res.status === 409) {
+        set({
+          error:
+            "An account with this email already exists. Log in with your email and password instead.",
+          isLoading: false,
+        });
+        return false;
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.error("[socialSignIn] Error response →", res.status, body);
+        set({ error: "Hmm… something’s off. Try again.", isLoading: false });
+        return false;
+      }
+
+      const appData = await res.json();
+      await SecureStore.setItemAsync(JWT_KEY, appData.access_token);
+      await SecureStore.setItemAsync(EMAIL_VERIFIED_KEY, "true");
+      if (appData.username)
+        await SecureStore.setItemAsync(USERNAME_KEY, appData.username);
+      if (appData.email)
+        await SecureStore.setItemAsync(EMAIL_KEY, appData.email);
+      set({
+        token: appData.access_token,
+        isAuthenticated: true,
+        isNewUser: appData.isNewUser === true,
+        emailVerified: true,
+        username: appData.username ?? null,
+        email: appData.email ?? null,
+        isLoading: false,
+      });
+      return true;
+    } catch (e) {
+      // User tapped "Cancel" on the native Apple sheet → not an error.
+      if ((e as { code?: string })?.code === "ERR_REQUEST_CANCELED") {
+        set({ isLoading: false });
+        return false;
+      }
+      console.error("[socialSignIn] error →", e);
+      set({
+        error: "Can't reach the server right now. Check your connection.",
+        isLoading: false,
+      });
+      return false;
     }
   },
 

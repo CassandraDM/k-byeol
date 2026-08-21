@@ -20,6 +20,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { HolographicBackground } from "@/components/ui/holographic-background";
 import { WelcomeText } from "@/components/ui/welcome-text";
@@ -68,7 +69,8 @@ function useAnimatedField(mode: Mode, visibleIn: Mode) {
 // ─── Component ───────────────────────────────────────────────────────────────
 export default function SignInScreen() {
   const router = useRouter();
-  const { signIn, signUp, isLoading, error, clearError } = useAuthStore();
+  const { signIn, signUp, socialSignIn, isLoading, error, clearError } =
+    useAuthStore();
 
   const [mode, setMode] = useState<Mode>("sign-in");
   const [username, setUsername] = useState("");
@@ -159,6 +161,16 @@ export default function SignInScreen() {
       } else {
         router.replace("/(tabs)");
       }
+    }
+  };
+
+  const handleSocial = async (provider: "google" | "apple") => {
+    clearError();
+    const ok = await socialSignIn(provider);
+    if (ok) {
+      // Social accounts are email-verified; new ones still do onboarding.
+      const { isNewUser } = useAuthStore.getState();
+      router.replace(isNewUser ? ("/(onboarding)" as any) : "/(tabs)");
     }
   };
 
@@ -371,6 +383,42 @@ export default function SignInScreen() {
                   </Text>
                 )}
               </Pressable>
+
+              {/* Social login */}
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>or</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.socialButton,
+                  pressed && styles.buttonPressed,
+                ]}
+                onPress={() => handleSocial("google")}
+                disabled={isLoading}
+              >
+                <Ionicons name="logo-google" size={18} color="#333" />
+                <Text style={styles.socialButtonText}>
+                  Continue with Google
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.socialButton,
+                  styles.appleButton,
+                  pressed && styles.buttonPressed,
+                ]}
+                onPress={() => handleSocial("apple")}
+                disabled={isLoading}
+              >
+                <Ionicons name="logo-apple" size={18} color="#fff" />
+                <Text style={[styles.socialButtonText, styles.appleButtonText]}>
+                  Continue with Apple
+                </Text>
+              </Pressable>
             </View>
           </View>
         </ScrollView>
@@ -493,5 +541,45 @@ const styles = StyleSheet.create({
     color: Palette.white,
     fontSize: 20,
     letterSpacing: 0.3,
+  },
+
+  // ── Social login ──────────────────────────────────────────────────────────
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 22,
+    marginBottom: 14,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.5)",
+  },
+  dividerText: {
+    fontFamily: CustomFonts.moyamoya,
+    fontSize: 12,
+    color: Palette.white,
+  },
+  socialButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: Palette.white,
+    borderRadius: 12,
+    height: 48,
+    marginBottom: 10,
+  },
+  socialButtonText: {
+    fontFamily: CustomFonts.moyamoya,
+    fontSize: 15,
+    color: "#333",
+  },
+  appleButton: {
+    backgroundColor: "#000",
+  },
+  appleButtonText: {
+    color: "#fff",
   },
 });
