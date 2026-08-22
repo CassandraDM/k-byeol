@@ -177,6 +177,13 @@ export class EventsService {
       throw new ForbiddenException('You are not the organizer of this event');
     }
 
+    // Moving the event re-arms the "starts in 1 hour" reminder — the one we
+    // may already have sent was for the old slot.
+    const rescheduled =
+      (dto.date !== undefined &&
+        new Date(dto.date).getTime() !== event.date.getTime()) ||
+      (dto.time !== undefined && dto.time !== event.time);
+
     const updated = await this.prisma.event.update({
       where: { id: eventId },
       data: {
@@ -189,6 +196,7 @@ export class EventsService {
         ...(dto.time !== undefined && { time: dto.time }),
         ...(dto.description !== undefined && { description: dto.description }),
         ...(dto.imageUrl !== undefined && { imageUrl: dto.imageUrl }),
+        ...(rescheduled && { reminderSentAt: null }),
       },
     });
     return updated;

@@ -11,12 +11,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SlideUpSheet } from '@/components/ui/slide-up-sheet';
 import { useRouter } from 'expo-router';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 
+import { DateTimeField } from '@/components/ui/date-time-field';
 import { CustomFonts, Palette } from '@/constants/theme';
 import { apiFetch } from '@/utils/api';
 import { useAuthStore } from '@/stores/auth-store';
@@ -59,8 +58,6 @@ export default function NewEventScreen() {
   const [typeMenuOpen, setTypeMenuOpen] = useState(false);
   const [date, setDate] = useState<Date | null>(null);
   const [time, setTime] = useState<Date | null>(null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
   const [addressQuery, setAddressQuery] = useState('');
   const [address, setAddress] = useState<AddressSuggestion | null>(null);
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
@@ -264,112 +261,24 @@ export default function NewEventScreen() {
 
           {/* Date & Time */}
           <View style={styles.row}>
-            <View style={[styles.field, styles.flexHalf]}>
-              <Text style={styles.label}>Date</Text>
-              <Pressable
-                style={styles.input}
-                onPress={() => setShowDatePicker(true)}>
-                <View style={styles.dropdownRow}>
-                  <Text style={[styles.inputText, !date && styles.placeholderText]}>
-                    {date ? date.toLocaleDateString('en-GB') : 'Pick a date'}
-                  </Text>
-                  <Ionicons name="calendar-outline" size={18} color={Palette.purple} />
-                </View>
-              </Pressable>
+            <View style={styles.flexHalf}>
+              <DateTimeField
+                mode="date"
+                label="Date"
+                value={date}
+                onChange={setDate}
+                minimumDate={new Date()}
+              />
             </View>
-            <View style={[styles.field, styles.flexHalf]}>
-              <Text style={styles.label}>Time</Text>
-              <Pressable
-                style={styles.input}
-                onPress={() => setShowTimePicker(true)}>
-                <View style={styles.dropdownRow}>
-                  <Text style={[styles.inputText, !time && styles.placeholderText]}>
-                    {time
-                      ? `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`
-                      : 'Pick a time'}
-                  </Text>
-                  <Ionicons name="time-outline" size={18} color={Palette.purple} />
-                </View>
-              </Pressable>
+            <View style={styles.flexHalf}>
+              <DateTimeField
+                mode="time"
+                label="Time"
+                value={time}
+                onChange={setTime}
+              />
             </View>
           </View>
-
-          {/* iOS: modal sheet with spinner picker. Android: native dialog */}
-          {Platform.OS === 'ios' ? (
-            <>
-              <SlideUpSheet
-                visible={showDatePicker}
-                onClose={() => setShowDatePicker(false)}>
-                <DateTimePicker
-                  value={date ?? new Date()}
-                  mode="date"
-                  display="spinner"
-                  minimumDate={new Date()}
-                  textColor="#333"
-                  themeVariant="light"
-                  style={styles.picker}
-                  onChange={(_, d) => {
-                    if (d) setDate(d);
-                  }}
-                />
-                <Pressable
-                  style={styles.modalDone}
-                  onPress={() => {
-                    if (!date) setDate(new Date());
-                    setShowDatePicker(false);
-                  }}>
-                  <Text style={styles.modalDoneText}>Done</Text>
-                </Pressable>
-              </SlideUpSheet>
-              <SlideUpSheet
-                visible={showTimePicker}
-                onClose={() => setShowTimePicker(false)}>
-                <DateTimePicker
-                  value={time ?? new Date()}
-                  mode="time"
-                  display="spinner"
-                  textColor="#333"
-                  themeVariant="light"
-                  style={styles.picker}
-                  onChange={(_, t) => {
-                    if (t) setTime(t);
-                  }}
-                />
-                <Pressable
-                  style={styles.modalDone}
-                  onPress={() => {
-                    if (!time) setTime(new Date());
-                    setShowTimePicker(false);
-                  }}>
-                  <Text style={styles.modalDoneText}>Done</Text>
-                </Pressable>
-              </SlideUpSheet>
-            </>
-          ) : (
-            <>
-              {showDatePicker && (
-                <DateTimePicker
-                  value={date ?? new Date()}
-                  mode="date"
-                  minimumDate={new Date()}
-                  onChange={(_, d) => {
-                    setShowDatePicker(false);
-                    if (d) setDate(d);
-                  }}
-                />
-              )}
-              {showTimePicker && (
-                <DateTimePicker
-                  value={time ?? new Date()}
-                  mode="time"
-                  onChange={(_, t) => {
-                    setShowTimePicker(false);
-                    if (t) setTime(t);
-                  }}
-                />
-              )}
-            </>
-          )}
 
           {/* Location */}
           <View style={styles.field}>

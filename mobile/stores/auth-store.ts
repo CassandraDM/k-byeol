@@ -1,11 +1,15 @@
 import { create } from "zustand";
 import { Platform } from "react-native";
-import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { API_URL } from "@/constants/api";
 import { getSupabase } from "@/constants/supabase";
+import { getItem, setItem, deleteItem } from "@/utils/storage";
+import {
+  registerPushToken,
+  unregisterPushToken,
+} from "@/utils/push-notifications";
 import { useOnboardingStore } from "@/stores/onboarding-store";
 
 // Maps raw class-validator messages to user-friendly ones
@@ -71,11 +75,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   hydrate: async () => {
     try {
-      const token = await SecureStore.getItemAsync(JWT_KEY);
-      const onboardingDone = await SecureStore.getItemAsync(ONBOARDING_KEY);
-      const emailVerified = await SecureStore.getItemAsync(EMAIL_VERIFIED_KEY);
-      const username = await SecureStore.getItemAsync(USERNAME_KEY);
-      const email = await SecureStore.getItemAsync(EMAIL_KEY);
+      const token = await getItem(JWT_KEY);
+      const onboardingDone = await getItem(ONBOARDING_KEY);
+      const emailVerified = await getItem(EMAIL_VERIFIED_KEY);
+      const username = await getItem(USERNAME_KEY);
+      const email = await getItem(EMAIL_KEY);
       if (token) {
         set({
           token,
@@ -85,6 +89,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           username,
           email,
         });
+        // Expo can rotate a device's push token between launches.
+        void registerPushToken(token);
       }
     } catch {
       // Token not found or unreadable — stay unauthenticated
@@ -119,16 +125,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       const data = await res.json();
-      await SecureStore.setItemAsync(JWT_KEY, data.access_token);
+      await setItem(JWT_KEY, data.access_token);
       const emailVerified = data.emailVerified === true;
-      await SecureStore.setItemAsync(
+      await setItem(
         EMAIL_VERIFIED_KEY,
         emailVerified ? "true" : "false",
       );
       const username = data.username ?? null;
       const emailAddr = data.email ?? email;
-      if (username) await SecureStore.setItemAsync(USERNAME_KEY, username);
-      if (emailAddr) await SecureStore.setItemAsync(EMAIL_KEY, emailAddr);
+      if (username) await setItem(USERNAME_KEY, username);
+      if (emailAddr) await setItem(EMAIL_KEY, emailAddr);
       set({
         token: data.access_token,
         isAuthenticated: true,
@@ -138,6 +144,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         email: emailAddr,
         isLoading: false,
       });
+      // Fire-and-forget: the OS permission prompt must not hold up sign-in.
+      void registerPushToken(data.access_token);
     } catch (e) {
       console.error("[signIn] Network error →", `${API_URL}/auth/login`, e);
       set({
@@ -184,11 +192,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       const data = await res.json();
-      await SecureStore.setItemAsync(JWT_KEY, data.access_token);
+      await setItem(JWT_KEY, data.access_token);
       // New accounts start unverified.
-      await SecureStore.setItemAsync(EMAIL_VERIFIED_KEY, "false");
-      await SecureStore.setItemAsync(USERNAME_KEY, data.username ?? username);
-      await SecureStore.setItemAsync(EMAIL_KEY, data.email ?? email);
+      await setItem(EMAIL_VERIFIED_KEY, "false");
+      await setItem(USERNAME_KEY, data.username ?? username);
+      await setItem(EMAIL_KEY, data.email ?? email);
       set({
         token: data.access_token,
         isAuthenticated: true,
@@ -198,6 +206,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         email: data.email ?? email,
         isLoading: false,
       });
+      void registerPushToken(data.access_token);
     } catch (e) {
       console.error("[signUp] Network error →", `${API_URL}/auth/register`, e);
       set({
@@ -299,12 +308,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       const appData = await res.json();
-      await SecureStore.setItemAsync(JWT_KEY, appData.access_token);
-      await SecureStore.setItemAsync(EMAIL_VERIFIED_KEY, "true");
+
+      // Backend has validated the token — drop the Supabase session locally so
+      // Storage uploads (avatars, event covers) use the anon key, not this
+      // user's OAuth token. ("local" scope avoids revoking the token server-side.)
+      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+
+      await setItem(JWT_KEY, appData.access_token);
+      await setItem(EMAIL_VERIFIED_KEY, "true");
       if (appData.username)
-        await SecureStore.setItemAsync(USERNAME_KEY, appData.username);
+        await setItem(USERNAME_KEY, appData.username);
       if (appData.email)
-        await SecureStore.setItemAsync(EMAIL_KEY, appData.email);
+        await setItem(EMAIL_KEY, appData.email);
       set({
         token: appData.access_token,
         isAuthenticated: true,
@@ -314,6 +329,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         email: appData.email ?? null,
         isLoading: false,
       });
+      void registerPushToken(appData.access_token);
       return true;
     } catch (e) {
       // User tapped "Cancel" on the native Apple sheet → not an error.
@@ -490,7 +506,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return false;
       }
 
-      await SecureStore.setItemAsync(EMAIL_VERIFIED_KEY, "true");
+      await setItem(EMAIL_VERIFIED_KEY, "true");
       set({ emailVerified: true, isLoading: false });
       return true;
     } catch (e) {
@@ -527,7 +543,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const body = await res.json().catch(() => ({}));
       if (body.alreadyVerified === true) {
         // Sync local state — the account is already verified.
-        await SecureStore.setItemAsync(EMAIL_VERIFIED_KEY, "true");
+        await setItem(EMAIL_VERIFIED_KEY, "true");
         set({ emailVerified: true, isLoading: false });
         return "already-verified";
       }
@@ -548,17 +564,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
-    await SecureStore.deleteItemAsync(JWT_KEY);
-    await SecureStore.deleteItemAsync(ONBOARDING_KEY);
-    await SecureStore.deleteItemAsync(EMAIL_VERIFIED_KEY);
-    await SecureStore.deleteItemAsync(USERNAME_KEY);
-    await SecureStore.deleteItemAsync(EMAIL_KEY);
+    // Detach this device before the JWT goes away — the call needs it.
+    await unregisterPushToken(get().token);
+    await deleteItem(JWT_KEY);
+    await deleteItem(ONBOARDING_KEY);
+    await deleteItem(EMAIL_VERIFIED_KEY);
+    await deleteItem(USERNAME_KEY);
+    await deleteItem(EMAIL_KEY);
     useOnboardingStore.getState().reset();
     set({ token: null, isAuthenticated: false, isNewUser: false, hasCompletedOnboarding: false, emailVerified: false, username: null, email: null, error: null });
   },
 
   setOnboardingComplete: async () => {
-    await SecureStore.setItemAsync(ONBOARDING_KEY, "true");
+    await setItem(ONBOARDING_KEY, "true");
     set({ hasCompletedOnboarding: true, isNewUser: false });
   },
 

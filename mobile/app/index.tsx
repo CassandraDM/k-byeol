@@ -4,7 +4,9 @@ import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { HolographicBackground } from '@/components/ui/holographic-background';
+import { openPendingNotificationRoute } from '@/hooks/use-push-notifications';
 import { useAuthStore } from '@/stores/auth-store';
+import { markNavigationReady } from '@/utils/push-notifications';
 
 export default function SplashScreen() {
   const router = useRouter();
@@ -26,10 +28,14 @@ export default function SplashScreen() {
           router.replace('/(auth)/verify-prompt' as any);
         } else {
           router.replace('/(tabs)' as any);
+          // If a notification tap launched the app, open it on top of the tabs
+          // now that the initial route is settled.
+          openPendingNotificationRoute();
         }
       } else {
         router.replace('/(auth)/sign-in' as any);
       }
+      markNavigationReady();
     }, 2000);
 
     return () => clearTimeout(timeout);
