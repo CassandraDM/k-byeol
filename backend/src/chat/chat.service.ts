@@ -1,9 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
+
+/** Push bodies get truncated so the notification stays readable. */
+const PREVIEW_MAX_LENGTH = 120;
 
 @Injectable()
 export class ChatService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async isParticipant(userId: number, conversationId: number): Promise<boolean> {
     const participant = await this.prisma.conversationParticipant.findUnique({
@@ -54,5 +61,51 @@ export class ChatService {
       text: message.text,
       createdAt: message.createdAt,
     };
+  }
+
+  /**
+   * Pushes a new message to every participant except the sender and anyone
+   * with the thread currently open (they already saw it live over the socket).
+   */
+  async notifyNewMessage(
+    conversationId: number,
+    senderId: number,
+    senderUsername: string,
+    text: string,
+    activeUserIds: number[] = [],
+  ): Promise<void> {
+    const skip = new Set([senderId, ...activeUserIds]);
+
+    const [conversation, participants] = await Promise.all([
+      this.prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { type: true, name: true },
+      }),
+      this.prisma.conversationParticipant.findMany({
+        where: { conversationId },
+        select: { userId: true },
+      }),
+    ]);
+    if (!conversation) return;
+
+    const recipients = participants
+      .map((p) => p.userId)
+      .filter((id) => !skip.has(id));
+    if (recipients.length === 0) return;
+
+    const preview =
+      text.length > PREVIEW_MAX_LENGTH
+        ? `${text.slice(0, PREVIEW_MAX_LENGTH - 1)}…`
+        : text;
+
+    // In a 1-on-1 the sender's name is the thread's name; in a group the
+    // conversation name is the useful header and the sender goes in the body.
+    const isDirect = conversation.type === 'PRIVATE';
+
+    await this.notifications.sendToUsers(recipients, {
+      title: isDirect ? senderUsername : (conversation.name ?? 'Group chat'),
+      body: isDirect ? preview : `${senderUsername}: ${preview}`,
+      data: { type: 'chat', conversationId },
+    });
   }
 }

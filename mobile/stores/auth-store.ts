@@ -6,6 +6,10 @@ import * as AppleAuthentication from "expo-apple-authentication";
 import { API_URL } from "@/constants/api";
 import { getSupabase } from "@/constants/supabase";
 import { getItem, setItem, deleteItem } from "@/utils/storage";
+import {
+  registerPushToken,
+  unregisterPushToken,
+} from "@/utils/push-notifications";
 import { useOnboardingStore } from "@/stores/onboarding-store";
 
 // Maps raw class-validator messages to user-friendly ones
@@ -85,6 +89,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           username,
           email,
         });
+        // Expo can rotate a device's push token between launches.
+        void registerPushToken(token);
       }
     } catch {
       // Token not found or unreadable — stay unauthenticated
@@ -138,6 +144,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         email: emailAddr,
         isLoading: false,
       });
+      // Fire-and-forget: the OS permission prompt must not hold up sign-in.
+      void registerPushToken(data.access_token);
     } catch (e) {
       console.error("[signIn] Network error →", `${API_URL}/auth/login`, e);
       set({
@@ -198,6 +206,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         email: data.email ?? email,
         isLoading: false,
       });
+      void registerPushToken(data.access_token);
     } catch (e) {
       console.error("[signUp] Network error →", `${API_URL}/auth/register`, e);
       set({
@@ -320,6 +329,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         email: appData.email ?? null,
         isLoading: false,
       });
+      void registerPushToken(appData.access_token);
       return true;
     } catch (e) {
       // User tapped "Cancel" on the native Apple sheet → not an error.
@@ -554,6 +564,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
+    // Detach this device before the JWT goes away — the call needs it.
+    await unregisterPushToken(get().token);
     await deleteItem(JWT_KEY);
     await deleteItem(ONBOARDING_KEY);
     await deleteItem(EMAIL_VERIFIED_KEY);

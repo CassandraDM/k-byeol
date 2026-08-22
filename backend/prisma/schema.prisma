@@ -34,8 +34,26 @@ model User {
   groupRequests      GroupRequest[]
   passwordResetTokens PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
+  deviceTokens        DeviceToken[]
 
   @@map("users")
+}
+
+/// An Expo push token for one of a user's devices. A user can be signed in on
+/// several devices, so this is a one-to-many — every row is one installation.
+model DeviceToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  // e.g. "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
+  token     String   @unique @db.VarChar(255)
+  platform  String?  @db.VarChar(10)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("device_tokens")
 }
 
 model PasswordResetToken {
@@ -127,6 +145,8 @@ model Event {
   description String
   imageUrl    String?   @map("image_url") @db.VarChar(500)
   organizerId Int       @map("organizer_id")
+  // Set once the "starts in 1 hour" push has gone out, so it only fires once.
+  reminderSentAt DateTime? @map("reminder_sent_at")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 

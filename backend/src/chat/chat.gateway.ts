@@ -95,8 +95,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       data.text,
     );
 
-    this.server
-      .to(`conversation:${data.conversationId}`)
-      .emit('newMessage', message);
+    const room = `conversation:${data.conversationId}`;
+    this.server.to(room).emit('newMessage', message);
+
+    // Everyone with the thread open right now got it live — only push to the
+    // rest. Don't make the sender wait on it.
+    const sockets = await this.server.in(room).fetchSockets();
+    const activeUserIds = sockets
+      .map((s) => s.data.user?.id as number | undefined)
+      .filter((id): id is number => typeof id === 'number');
+
+    void this.chatService.notifyNewMessage(
+      data.conversationId,
+      userId,
+      message.sender.username,
+      message.text,
+      activeUserIds,
+    );
   }
 }
