@@ -475,7 +475,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontFamily: CustomFonts.outfit,
     fontSize: 14,
-    color: '#E07EFF',
+    color: Palette.input,
     minHeight: 46,
     justifyContent: 'center',
     letterSpacing: 0,
@@ -483,7 +483,7 @@ const styles = StyleSheet.create({
   inputText: {
     fontFamily: CustomFonts.outfit,
     fontSize: 14,
-    color: '#E07EFF',
+    color: Palette.input,
   },
   placeholderText: {
     color: 'rgba(207, 126, 242, 0.5)',
@@ -521,7 +521,7 @@ const styles = StyleSheet.create({
   dropdownItemText: {
     fontFamily: CustomFonts.outfit,
     fontSize: 14,
-    color: '#E07EFF',
+    color: Palette.input,
     flex: 1,
   },
   row: {

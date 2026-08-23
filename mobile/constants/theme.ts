@@ -32,7 +32,12 @@ export const Palette = {
   white:  '#E7FCFE',
   purple: '#CF7EF2',
   pink:   '#D083EF',
+  /** Ink for text the user types or picks: inputs, dropdowns, code cells. */
+  input:  '#E07EFF',
 } as const;
+
+/** Page background gradient — the base surface every screen sits on. */
+export const PageBackground = ['#EDE7FF', '#F2EDFF'] as const;
 
 /** Custom app fonts loaded via expo-font in app/_layout.tsx */
 export const CustomFonts = {

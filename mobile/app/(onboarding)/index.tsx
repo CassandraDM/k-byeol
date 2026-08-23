@@ -568,7 +568,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 16,
-    color: '#E07EFF',
+    color: Palette.input,
     fontFamily: CustomFonts.syongsyong,
   },
   dropdown: {
@@ -586,7 +586,7 @@ const styles = StyleSheet.create({
   dropdownText: {
     fontFamily: CustomFonts.syongsyong,
     fontSize: 15,
-    color: '#E07EFF',
+    color: Palette.input,
   },
   selectedChip: {
     flexDirection: 'row',
@@ -650,7 +650,7 @@ const styles = StyleSheet.create({
     height: 40,
     paddingHorizontal: 14,
     fontSize: 14,
-    color: '#E07EFF',
+    color: Palette.input,
     fontFamily: CustomFonts.syongsyong,
   },
   requestButton: {
