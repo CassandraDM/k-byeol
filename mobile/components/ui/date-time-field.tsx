@@ -12,6 +12,11 @@ export interface DateTimeFieldProps {
   value: Date | null;
   onChange: (value: Date) => void;
   minimumDate?: Date;
+  /**
+   * Overrides the label colour. The default is near-white, which reads on the
+   * dark create-event screen but vanishes on a white sheet.
+   */
+  labelColor?: string;
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -33,6 +38,7 @@ export function DateTimeField({
   value,
   onChange,
   minimumDate,
+  labelColor,
 }: DateTimeFieldProps) {
   const [open, setOpen] = useState(false);
   const display = formatValue(mode, value);
@@ -41,7 +47,9 @@ export function DateTimeField({
 
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={[styles.label, labelColor ? { color: labelColor } : null]}>
+        {label}
+      </Text>
       <Pressable style={styles.input} onPress={() => setOpen(true)}>
         <View style={styles.row}>
           <Text style={[styles.inputText, !value && styles.placeholder]}>
@@ -115,7 +123,7 @@ const styles = StyleSheet.create({
   inputText: {
     fontFamily: CustomFonts.outfit,
     fontSize: 14,
-    color: "#E07EFF",
+    color: Palette.input,
   },
   placeholder: { color: "rgba(207, 126, 242, 0.5)" },
   picker: { width: "100%", height: 220 },

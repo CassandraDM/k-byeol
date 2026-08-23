@@ -517,7 +517,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontFamily: CustomFonts.outfit,
     fontSize: 14,
-    color: '#E07EFF',
+    color: Palette.input,
     minHeight: 46,
   },
   textarea: {

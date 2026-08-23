@@ -8,6 +8,18 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { Prisma } from '@prisma/client';
 
+/** Everything `GET /events` can narrow the map down by. */
+export interface EventFilters {
+  lat: number;
+  lng: number;
+  radiusKm: number;
+  /** Free-text match on title or description. */
+  q?: string;
+  /** Inclusive date bounds, as YYYY-MM-DD. */
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 @Injectable()
 export class EventsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -31,7 +43,41 @@ export class EventsService {
     return event;
   }
 
-  async findByLocation(lat: number, lng: number, radius: number, userId: number) {
+  async findByLocation(userId: number, filters: EventFilters) {
+    const { lat, lng, radiusKm, q, dateFrom, dateTo } = filters;
+
+    // The haversine distance in km, reused by SELECT, WHERE and ORDER BY.
+    // `least(1, …)` guards against floating-point drift pushing the argument
+    // just past 1, which would make acos() return NaN for an event sitting on
+    // the exact search coordinates and silently drop it from the results.
+    const distance = Prisma.sql`(
+      6371 * acos(
+        least(1,
+          cos(radians(${lat})) * cos(radians(latitude)) *
+          cos(radians(longitude) - radians(${lng})) +
+          sin(radians(${lat})) * sin(radians(latitude))
+        )
+      )
+    )`;
+
+    const conditions: Prisma.Sql[] = [Prisma.sql`${distance} <= ${radiusKm}`];
+
+    if (q) {
+      // Escape LIKE wildcards so a literal "%" or "_" typed in the search bar
+      // matches that character instead of standing in for anything.
+      const escaped = q.replace(/[\\%_]/g, (char) => '\\' + char);
+      const pattern = `%${escaped}%`;
+      conditions.push(
+        Prisma.sql`(title ILIKE ${pattern} OR description ILIKE ${pattern})`,
+      );
+    }
+    if (dateFrom) {
+      conditions.push(Prisma.sql`date >= ${dateFrom}::date`);
+    }
+    if (dateTo) {
+      conditions.push(Prisma.sql`date <= ${dateTo}::date`);
+    }
+
     const events = await this.prisma.$queryRaw<
       Array<{
         id: number;
@@ -50,21 +96,9 @@ export class EventsService {
         distance: number;
       }>
     >(Prisma.sql`
-      SELECT *, (
-        6371 * acos(
-          cos(radians(${lat})) * cos(radians(latitude)) *
-          cos(radians(longitude) - radians(${lng})) +
-          sin(radians(${lat})) * sin(radians(latitude))
-        )
-      ) AS distance
+      SELECT *, ${distance} AS distance
       FROM events
-      WHERE (
-        6371 * acos(
-          cos(radians(${lat})) * cos(radians(latitude)) *
-          cos(radians(longitude) - radians(${lng})) +
-          sin(radians(${lat})) * sin(radians(latitude))
-        )
-      ) <= ${radius}
+      WHERE ${Prisma.join(conditions, ' AND ')}
       ORDER BY distance
     `);
 

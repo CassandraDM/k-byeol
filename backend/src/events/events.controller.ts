@@ -18,6 +18,9 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { EmailVerifiedGuard } from '../auth/guards/email-verified.guard';
 import type { Request } from 'express';
 
+/** How far around the user we look when the client doesn't say. */
+const DEFAULT_RADIUS_KM = 10;
+
 @Controller('events')
 @UseGuards(JwtAuthGuard)
 export class EventsController {
@@ -33,7 +36,18 @@ export class EventsController {
   @Get()
   findByLocation(@Req() req: Request, @Query() query: QueryEventsDto) {
     const user = req['user'] as { id: number };
-    return this.eventsService.findByLocation(query.lat, query.lng, query.radius ?? 10, user.id);
+    return this.eventsService.findByLocation(user.id, {
+      lat: query.lat,
+      lng: query.lng,
+      // Explicitly reject NaN: it would reach the SQL comparison and quietly
+      // match zero events instead of falling back to the default.
+      radiusKm:
+        [query.radiusKm, query.radius].find((v) => Number.isFinite(v)) ??
+        DEFAULT_RADIUS_KM,
+      q: query.q?.trim() || undefined,
+      dateFrom: query.dateFrom,
+      dateTo: query.dateTo,
+    });
   }
 
   @Get(':id')

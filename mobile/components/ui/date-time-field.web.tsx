@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
 
-import { CustomFonts } from "@/constants/theme";
+import { CustomFonts, Palette } from "@/constants/theme";
 import type { DateTimeFieldProps } from "./date-time-field";
 
 // Raw DOM <input> — react-native-web renders to the browser, where
@@ -23,6 +23,7 @@ export function DateTimeField({
   value,
   onChange,
   minimumDate,
+  labelColor,
 }: DateTimeFieldProps) {
   const handleChange = (e: { target: { value: string } }) => {
     const v = e.target.value;
@@ -40,7 +41,9 @@ export function DateTimeField({
 
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={[styles.label, labelColor ? { color: labelColor } : null]}>
+        {label}
+      </Text>
       <Input
         type={mode}
         value={toInputValue(mode, value)}
@@ -58,7 +61,7 @@ export function DateTimeField({
           border: "none",
           outline: "none",
           fontSize: 14,
-          color: "#E07EFF",
+          color: Palette.input,
           fontFamily: "inherit",
           width: "100%",
           boxSizing: "border-box",

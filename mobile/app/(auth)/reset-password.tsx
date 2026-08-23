@@ -248,7 +248,7 @@ const styles = StyleSheet.create({
     height: 46,
     paddingHorizontal: 14,
     fontSize: 16,
-    color: "#E07EFF",
+    color: Palette.input,
     fontFamily: CustomFonts.syongsyong,
     letterSpacing: 0,
   },

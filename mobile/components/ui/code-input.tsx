@@ -88,7 +88,7 @@ const styles = StyleSheet.create({
   cellText: {
     fontFamily: CustomFonts.syongsyong,
     fontSize: 24,
-    color: "#E07EFF",
+    color: Palette.input,
   },
   hiddenInput: {
     position: "absolute",
