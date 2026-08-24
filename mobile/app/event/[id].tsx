@@ -207,6 +207,15 @@ export default function EventDetailScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Cover — omitted entirely when the organizer uploaded none */}
+        {event.imageUrl && (
+          <Image
+            source={{ uri: event.imageUrl }}
+            style={styles.cover}
+            contentFit="cover"
+          />
+        )}
+
         {/* Header */}
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} style={styles.backButton}>
@@ -441,6 +450,12 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 100,
     paddingHorizontal: 20,
+  },
+  cover: {
+    width: "100%",
+    height: 180,
+    borderRadius: 16,
+    marginBottom: 16,
   },
   header: {
     gap: 10,

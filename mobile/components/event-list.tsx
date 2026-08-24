@@ -1,4 +1,4 @@
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -68,7 +68,13 @@ export function EventList({
           <Pressable
             onPress={() => router.push(`/event/${item.id}` as any)}
             style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
-            <View style={[styles.stripe, { backgroundColor: config.color }]} />
+            {item.imageUrl && (
+              <Image
+                source={{ uri: item.imageUrl }}
+                style={styles.cover}
+                resizeMode="cover"
+              />
+            )}
 
             <View style={styles.cardBody}>
               <Text style={styles.cardTitle} numberOfLines={1}>
@@ -143,8 +149,8 @@ const styles = StyleSheet.create({
     opacity: 0.9,
     transform: [{ scale: 0.985 }],
   },
-  stripe: {
-    width: 5,
+  cover: {
+    width: 76,
     alignSelf: 'stretch',
   },
   cardBody: {

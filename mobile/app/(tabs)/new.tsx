@@ -16,8 +16,10 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { DateTimeField } from '@/components/ui/date-time-field';
+import { EventCoverPicker } from '@/components/event-cover-picker';
 import { CustomFonts, Palette } from '@/constants/theme';
 import { apiFetch } from '@/utils/api';
+import { getUserIdFromToken } from '@/utils/jwt';
 import { useAuthStore } from '@/stores/auth-store';
 import { EVENT_TYPE_CONFIG } from '@/constants/event-types';
 import type { EventType } from '@/constants/event-types';
@@ -62,7 +64,11 @@ export default function NewEventScreen() {
   const [address, setAddress] = useState<AddressSuggestion | null>(null);
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [description, setDescription] = useState('');
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [uploadingCover, setUploadingCover] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const currentUserId = getUserIdFromToken(token);
 
   const handleAddressChange = async (text: string) => {
     setAddressQuery(text);
@@ -105,6 +111,8 @@ export default function NewEventScreen() {
           date: dateStr,
           time: timeStr,
           description: description.trim(),
+          // Optional — the API stores null when the organizer skipped it.
+          imageUrl,
         }),
       });
 
@@ -117,6 +125,7 @@ export default function NewEventScreen() {
         setAddressQuery('');
         setAddress(null);
         setDescription('');
+        setImageUrl(null);
         // Go to map tab (navigate triggers useFocusEffect to refetch events)
         router.navigate('/(tabs)/' as any);
       } else {
@@ -203,7 +212,9 @@ export default function NewEventScreen() {
 
           {/* Title */}
           <View style={styles.field}>
-            <Text style={styles.label}>Title</Text>
+            <Text style={styles.label}>
+              Title <Text style={styles.required}>*</Text>
+            </Text>
             <TextInput
               style={styles.input}
               value={title}
@@ -216,7 +227,9 @@ export default function NewEventScreen() {
 
           {/* Type dropdown */}
           <View style={styles.field}>
-            <Text style={styles.label}>Type</Text>
+            <Text style={styles.label}>
+              Type <Text style={styles.required}>*</Text>
+            </Text>
             <Pressable
               style={styles.input}
               onPress={() => setTypeMenuOpen((v) => !v)}>
@@ -265,6 +278,7 @@ export default function NewEventScreen() {
               <DateTimeField
                 mode="date"
                 label="Date"
+                required
                 value={date}
                 onChange={setDate}
                 minimumDate={new Date()}
@@ -274,6 +288,7 @@ export default function NewEventScreen() {
               <DateTimeField
                 mode="time"
                 label="Time"
+                required
                 value={time}
                 onChange={setTime}
               />
@@ -282,7 +297,9 @@ export default function NewEventScreen() {
 
           {/* Location */}
           <View style={styles.field}>
-            <Text style={styles.label}>Location</Text>
+            <Text style={styles.label}>
+              Location <Text style={styles.required}>*</Text>
+            </Text>
             <TextInput
               style={styles.input}
               value={address ? address.label : addressQuery}
@@ -320,7 +337,9 @@ export default function NewEventScreen() {
 
           {/* Description */}
           <View style={styles.field}>
-            <Text style={styles.label}>Description</Text>
+            <Text style={styles.label}>
+              Description <Text style={styles.required}>*</Text>
+            </Text>
             <TextInput
               style={[styles.input, styles.textarea]}
               value={description}
@@ -331,6 +350,16 @@ export default function NewEventScreen() {
               textAlignVertical="top"
             />
           </View>
+
+          {/* Cover image */}
+          <View style={styles.field}>
+            <EventCoverPicker
+              value={imageUrl}
+              onChange={setImageUrl}
+              userId={currentUserId}
+              onUploadingChange={setUploadingCover}
+            />
+          </View>
         </View>
 
         {/* Submit */}
@@ -339,14 +368,17 @@ export default function NewEventScreen() {
             style={({ pressed }) => [
               styles.submitButton,
               pressed && styles.submitPressed,
-              submitting && { opacity: 0.7 },
+              (submitting || uploadingCover) && { opacity: 0.7 },
             ]}
             onPress={handleSubmit}
-            disabled={submitting}>
+            // Wait for the cover upload, or the event would save without it.
+            disabled={submitting || uploadingCover}>
             {submitting ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.submitText}>Create</Text>
+              <Text style={styles.submitText}>
+                {uploadingCover ? 'Uploading cover…' : 'Create'}
+              </Text>
             )}
           </Pressable>
         </View>
@@ -466,6 +498,10 @@ const styles = StyleSheet.create({
     fontFamily: CustomFonts.moyamoya,
     fontSize: 13,
     color: '#E7FCFE',
+  },
+  /** Marks a field the form refuses to submit without. */
+  required: {
+    color: Palette.pink,
   },
   input: {
     alignSelf: 'stretch',

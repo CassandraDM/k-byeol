@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -32,6 +32,14 @@ export function EventPreviewCard({ event, onClose }: EventPreviewCardProps) {
         <Pressable style={styles.closeButton} onPress={onClose} hitSlop={10}>
           <Ionicons name="close-circle" size={22} color={Palette.purple} />
         </Pressable>
+
+        {event.imageUrl && (
+          <Image
+            source={{ uri: event.imageUrl }}
+            style={styles.cover}
+            resizeMode="cover"
+          />
+        )}
 
         <Text style={styles.cardTitle} numberOfLines={1}>
           {event.title}
@@ -101,6 +109,11 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
     borderTopColor: '#fff',
+  },
+  cover: {
+    width: '100%',
+    height: 84,
+    borderRadius: 10,
   },
   cardTitle: {
     fontFamily: CustomFonts.syongsyong,
