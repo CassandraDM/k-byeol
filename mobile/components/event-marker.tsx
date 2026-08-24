@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { Callout, Marker } from '@/components/ui/map';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -84,6 +84,14 @@ export function EventMarker({ event, isSelected, isOwner, onSelect }: EventMarke
           style={styles.calloutContainer}
           onPress={() => router.push(`/event/${event.id}` as any)}>
           <View style={styles.card}>
+            {event.imageUrl && (
+              <Image
+                source={{ uri: event.imageUrl }}
+                style={styles.cover}
+                resizeMode="cover"
+              />
+            )}
+
             <Text style={styles.cardTitle} numberOfLines={1}>
               {event.title}
             </Text>
@@ -136,6 +144,11 @@ const styles = StyleSheet.create({
   },
   calloutContainer: {
     alignItems: 'center',
+  },
+  cover: {
+    width: '100%',
+    height: 80,
+    borderRadius: 10,
   },
   card: {
     backgroundColor: '#EDE7FF',

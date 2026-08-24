@@ -13,7 +13,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { CustomFonts, Palette } from "@/constants/theme";
 import { apiFetch } from "@/utils/api";
 import { useAuthStore } from "@/stores/auth-store";
-import { EVENT_TYPE_CONFIG, EventType } from "@/constants/event-types";
+import { EventType } from "@/constants/event-types";
 
 interface Fandom {
   id: number;
@@ -129,19 +129,14 @@ export function ProfileContent({
   const ownerLabel = isOwnProfile ? "me" : profile.username;
 
   const renderEventCard = (event: UserEvent) => {
-    const config = EVENT_TYPE_CONFIG[event.type];
     return (
       <Pressable
         key={event.id}
         style={({ pressed }) => [styles.eventCard, pressed && styles.pressed]}
         onPress={() => router.push(`/event/${event.id}` as any)}
       >
-        {event.imageUrl ? (
+        {event.imageUrl && (
           <Image source={{ uri: event.imageUrl }} style={styles.eventImage} />
-        ) : (
-          <View style={[styles.eventImage, { backgroundColor: config.color }]}>
-            <Ionicons name={config.icon} size={28} color="#fff" />
-          </View>
         )}
         <View style={styles.eventBody}>
           <Text style={styles.eventTitle} numberOfLines={2}>
@@ -498,8 +493,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
+    overflow: "hidden",
   },
   eventBody: {
     flex: 1,

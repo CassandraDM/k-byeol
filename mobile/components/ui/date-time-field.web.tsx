@@ -24,6 +24,7 @@ export function DateTimeField({
   onChange,
   minimumDate,
   labelColor,
+  required,
 }: DateTimeFieldProps) {
   const handleChange = (e: { target: { value: string } }) => {
     const v = e.target.value;
@@ -43,6 +44,7 @@ export function DateTimeField({
     <View style={styles.field}>
       <Text style={[styles.label, labelColor ? { color: labelColor } : null]}>
         {label}
+        {required && <Text style={styles.required}> *</Text>}
       </Text>
       <Input
         type={mode}
@@ -79,4 +81,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#E7FCFE",
   },
+  required: { color: Palette.pink },
 });

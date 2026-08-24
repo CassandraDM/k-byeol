@@ -17,8 +17,10 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 
+import { EventCoverPicker } from '@/components/event-cover-picker';
 import { CustomFonts, Palette } from '@/constants/theme';
 import { apiFetch } from '@/utils/api';
+import { getUserIdFromToken } from '@/utils/jwt';
 import { useAuthStore } from '@/stores/auth-store';
 import { EVENT_TYPE_CONFIG } from '@/constants/event-types';
 import type { EventType } from '@/constants/event-types';
@@ -54,6 +56,7 @@ export default function EditEventScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { token } = useAuthStore();
+  const currentUserId = getUserIdFromToken(token);
 
   const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState('');
@@ -67,6 +70,8 @@ export default function EditEventScreen() {
   const [address, setAddress] = useState<AddressSuggestion | null>(null);
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [description, setDescription] = useState('');
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [uploadingCover, setUploadingCover] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -90,6 +95,7 @@ export default function EditEventScreen() {
           });
           setAddressQuery(e.address);
           setDescription(e.description);
+          setImageUrl(e.imageUrl ?? null);
         }
       } catch (err) {
         console.error('[EditEvent] Load error:', err);
@@ -141,6 +147,8 @@ export default function EditEventScreen() {
           date: dateStr,
           time: timeStr,
           description: description.trim(),
+          // null clears an existing cover; the API treats it as optional.
+          imageUrl,
         }),
       });
 
@@ -200,7 +208,9 @@ export default function EditEventScreen() {
           <View pointerEvents="none" style={styles.tintLight} />
 
           <View style={styles.field}>
-            <Text style={styles.label}>Title</Text>
+            <Text style={styles.label}>
+              Title <Text style={styles.required}>*</Text>
+            </Text>
             <TextInput
               style={styles.input}
               value={title}
@@ -212,7 +222,9 @@ export default function EditEventScreen() {
           </View>
 
           <View style={styles.field}>
-            <Text style={styles.label}>Type</Text>
+            <Text style={styles.label}>
+              Type <Text style={styles.required}>*</Text>
+            </Text>
             <Pressable style={styles.input} onPress={() => setTypeMenuOpen((v) => !v)}>
               <View style={styles.dropdownRow}>
                 <Text style={[styles.inputText, !type && styles.placeholderText]}>
@@ -255,7 +267,9 @@ export default function EditEventScreen() {
 
           <View style={styles.row}>
             <View style={[styles.field, styles.flexHalf]}>
-              <Text style={styles.label}>Date</Text>
+              <Text style={styles.label}>
+              Date <Text style={styles.required}>*</Text>
+            </Text>
               <Pressable style={styles.input} onPress={() => setShowDatePicker(true)}>
                 <View style={styles.dropdownRow}>
                   <Text style={[styles.inputText, !date && styles.placeholderText]}>
@@ -266,7 +280,9 @@ export default function EditEventScreen() {
               </Pressable>
             </View>
             <View style={[styles.field, styles.flexHalf]}>
-              <Text style={styles.label}>Time</Text>
+              <Text style={styles.label}>
+              Time <Text style={styles.required}>*</Text>
+            </Text>
               <Pressable style={styles.input} onPress={() => setShowTimePicker(true)}>
                 <View style={styles.dropdownRow}>
                   <Text style={[styles.inputText, !time && styles.placeholderText]}>
@@ -357,7 +373,9 @@ export default function EditEventScreen() {
           )}
 
           <View style={styles.field}>
-            <Text style={styles.label}>Location</Text>
+            <Text style={styles.label}>
+              Location <Text style={styles.required}>*</Text>
+            </Text>
             <TextInput
               style={styles.input}
               value={address ? address.label : addressQuery}
@@ -390,7 +408,9 @@ export default function EditEventScreen() {
           </View>
 
           <View style={styles.field}>
-            <Text style={styles.label}>Description</Text>
+            <Text style={styles.label}>
+              Description <Text style={styles.required}>*</Text>
+            </Text>
             <TextInput
               style={[styles.input, styles.textarea]}
               value={description}
@@ -401,6 +421,15 @@ export default function EditEventScreen() {
               textAlignVertical="top"
             />
           </View>
+
+          <View style={styles.field}>
+            <EventCoverPicker
+              value={imageUrl}
+              onChange={setImageUrl}
+              userId={currentUserId}
+              onUploadingChange={setUploadingCover}
+            />
+          </View>
         </View>
 
         <View style={styles.submitRow}>
@@ -408,14 +437,17 @@ export default function EditEventScreen() {
             style={({ pressed }) => [
               styles.submitButton,
               pressed && styles.submitPressed,
-              submitting && { opacity: 0.7 },
+              (submitting || uploadingCover) && { opacity: 0.7 },
             ]}
             onPress={handleSubmit}
-            disabled={submitting}>
+            // Wait for the cover upload, or the edit would save the old URL.
+            disabled={submitting || uploadingCover}>
             {submitting ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.submitText}>Save</Text>
+              <Text style={styles.submitText}>
+                {uploadingCover ? 'Uploading cover…' : 'Save'}
+              </Text>
             )}
           </Pressable>
         </View>
@@ -486,6 +518,10 @@ const styles = StyleSheet.create({
     fontFamily: CustomFonts.moyamoya,
     fontSize: 13,
     color: '#E7FCFE',
+  },
+  /** Marks a field the form refuses to submit without. */
+  required: {
+    color: Palette.pink,
   },
   input: {
     alignSelf: 'stretch',

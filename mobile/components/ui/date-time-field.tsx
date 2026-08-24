@@ -17,6 +17,8 @@ export interface DateTimeFieldProps {
    * dark create-event screen but vanishes on a white sheet.
    */
   labelColor?: string;
+  /** Appends a "*" marker to the label. */
+  required?: boolean;
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -39,6 +41,7 @@ export function DateTimeField({
   onChange,
   minimumDate,
   labelColor,
+  required,
 }: DateTimeFieldProps) {
   const [open, setOpen] = useState(false);
   const display = formatValue(mode, value);
@@ -49,6 +52,7 @@ export function DateTimeField({
     <View style={styles.field}>
       <Text style={[styles.label, labelColor ? { color: labelColor } : null]}>
         {label}
+        {required && <Text style={styles.required}> *</Text>}
       </Text>
       <Pressable style={styles.input} onPress={() => setOpen(true)}>
         <View style={styles.row}>
@@ -125,6 +129,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Palette.input,
   },
+  required: { color: Palette.pink },
   placeholder: { color: "rgba(207, 126, 242, 0.5)" },
   picker: { width: "100%", height: 220 },
   done: {
