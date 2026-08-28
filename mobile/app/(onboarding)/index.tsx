@@ -330,7 +330,7 @@ function StepGroups() {
   return (
     <>
       <Text style={styles.stepTitle}>Pick your{'\n'}favorite groups</Text>
-      <Text style={styles.stepSubtitle}>We'll show you what matters</Text>
+      <Text style={styles.stepSubtitle}>We&apos;ll show you what matters</Text>
 
       {loadingGroups ? (
         <ActivityIndicator size="large" color={Palette.purple} style={{ marginVertical: 24 }} />
@@ -352,9 +352,9 @@ function StepGroups() {
         </View>
       )}
 
-      <Text style={styles.requestLabel}>Can't find your group?</Text>
+      <Text style={styles.requestLabel}>Can&apos;t find your group?</Text>
       {requestSent ? (
-        <Text style={styles.requestSuccess}>Request sent! We'll review it soon.</Text>
+        <Text style={styles.requestSuccess}>Request sent! We&apos;ll review it soon.</Text>
       ) : (
         <View style={styles.requestRow}>
           <TextInput

@@ -83,7 +83,7 @@ export default function ShopScreen() {
       </View>
       <Text style={styles.title}>Shop is under construction</Text>
       <Text style={styles.subtitle}>
-        We're building the K-pop marketplace right now. Stay tuned!
+        We&apos;re building the K-pop marketplace right now. Stay tuned!
       </Text>
       <Animated.Text style={[styles.funText, { opacity: fade }]}>
         {FUN_MESSAGES[index]}
