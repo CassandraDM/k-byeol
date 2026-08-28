@@ -2,10 +2,13 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ModerationService } from '../moderation/moderation.service';
+import { FollowsService } from '../follows/follows.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { Prisma } from '@prisma/client';
@@ -24,9 +27,13 @@ export interface EventFilters {
 
 @Injectable()
 export class EventsService {
+  private readonly logger = new Logger(EventsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly moderation: ModerationService,
+    private readonly follows: FollowsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async create(organizerId: number, dto: CreateEventDto) {
@@ -45,7 +52,47 @@ export class EventsService {
       },
     });
 
+    await this.announceToFollowers(organizerId, event);
+
     return event;
+  }
+
+  /**
+   * Tells the organizer's followers that a new event just went up — the whole
+   * point of following someone.
+   *
+   * Deliberately swallows its own errors: a push that fails must never undo an
+   * event the user has already successfully created.
+   */
+  private async announceToFollowers(
+    organizerId: number,
+    event: { id: number; title: string; address: string },
+  ): Promise<void> {
+    try {
+      const [followerIds, organizer] = await Promise.all([
+        this.follows.notifiableFollowerIds(organizerId),
+        this.prisma.user.findUnique({
+          where: { id: organizerId },
+          select: { username: true },
+        }),
+      ]);
+      if (followerIds.length === 0 || !organizer) return;
+
+      this.logger.log(
+        `Announcing event ${event.id} to ${followerIds.length} follower(s)`,
+      );
+
+      await this.notifications.sendToUsers(followerIds, {
+        title: `${organizer.username} added an event`,
+        body: `${event.title} — ${event.address}`,
+        data: { type: 'event', eventId: event.id },
+      });
+    } catch (e) {
+      this.logger.error(
+        `Could not announce event ${event.id} to followers`,
+        e as Error,
+      );
+    }
   }
 
   async findByLocation(userId: number, filters: EventFilters) {

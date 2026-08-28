@@ -38,6 +38,8 @@ model User {
   reportsSubmitted    Report[]                 @relation("ReportsSubmitted")
   blocksMade          Block[]                  @relation("BlocksMade")
   blocksReceived      Block[]                  @relation("BlocksReceived")
+  following           Follow[]                 @relation("Following")
+  followers           Follow[]                 @relation("Followers")
 
   @@map("users")
 }
@@ -78,6 +80,22 @@ model Block {
   @@id([blockerId, blockedId])
   @@index([blockedId])
   @@map("blocks")
+}
+
+/// One user following another. The row is directional — following someone
+/// does not make them follow back. Two rows pointing at each other is what
+/// "friends" means here, so friendship is derived, never stored.
+model Follow {
+  followerId  Int      @map("follower_id")
+  followingId Int      @map("following_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  follower  User @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("Followers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followingId])
+  @@index([followingId])
+  @@map("follows")
 }
 
 /// An Expo push token for one of a user's devices. A user can be signed in on

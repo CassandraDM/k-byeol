@@ -14,6 +14,8 @@ import { CustomFonts, Palette } from "@/constants/theme";
 import { apiFetch } from "@/utils/api";
 import { useAuthStore } from "@/stores/auth-store";
 import { EventType } from "@/constants/event-types";
+import { FollowButton } from "@/components/follow-button";
+import { type FollowState } from "@/utils/follows";
 
 interface Fandom {
   id: number;
@@ -21,7 +23,8 @@ interface Fandom {
   slug: string;
 }
 
-interface Profile {
+/** The profile payload, which carries the follow relationship with it. */
+interface Profile extends FollowState {
   id: number;
   username: string;
   email: string;
@@ -157,6 +160,11 @@ export function ProfileContent({
     .slice(0, 3);
   const ownerLabel = isOwnProfile ? "me" : profile.username;
 
+  const openConnections = (tab: "following" | "followers") =>
+    router.push(
+      `/profile/connections?userId=${profile.id}&tab=${tab}&username=${encodeURIComponent(profile.username)}` as any,
+    );
+
   const renderEventCard = (event: UserEvent) => {
     return (
       <Pressable
@@ -244,13 +252,34 @@ export function ProfileContent({
             </Text>
           </Text>
           <View style={styles.metaRow}>
-            <Text style={styles.metaText}>
-              <Text style={styles.metaCount}>0</Text> Following
-            </Text>
-            <Text style={styles.metaText}>
-              <Text style={styles.metaCount}>0</Text> Followers
-            </Text>
+            <Pressable onPress={() => openConnections("following")} hitSlop={6}>
+              <Text style={styles.metaText}>
+                <Text style={styles.metaCount}>{profile.followingCount}</Text>{" "}
+                Following
+              </Text>
+            </Pressable>
+            <Pressable onPress={() => openConnections("followers")} hitSlop={6}>
+              <Text style={styles.metaText}>
+                <Text style={styles.metaCount}>{profile.followerCount}</Text>{" "}
+                Followers
+              </Text>
+            </Pressable>
           </View>
+
+          {!isOwnProfile && (
+            <View style={styles.followSlot}>
+              <FollowButton
+                userId={profile.id}
+                username={profile.username}
+                state={profile}
+                onChange={(state) =>
+                  setProfile((current) =>
+                    current ? { ...current, ...state } : current,
+                  )
+                }
+              />
+            </View>
+          )}
         </View>
       </View>
 
@@ -430,6 +459,10 @@ const styles = StyleSheet.create({
     fontFamily: CustomFonts.moyamoya,
     fontSize: 13,
     color: Palette.purple,
+  },
+  followSlot: {
+    alignItems: "flex-start",
+    marginTop: 2,
   },
   section: {
     marginTop: 20,

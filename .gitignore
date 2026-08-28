@@ -2,3 +2,6 @@
 
 # Secrets — never commit
 *.p8
+
+# Project instructions for the assistant — kept local
+CLAUDE.md

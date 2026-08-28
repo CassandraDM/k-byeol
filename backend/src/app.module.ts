@@ -13,6 +13,7 @@ import { ChatModule } from './chat/chat.module';
 import { UsersModule } from './users/users.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ModerationModule } from './moderation/moderation.module';
+import { FollowsModule } from './follows/follows.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { ModerationModule } from './moderation/moderation.module';
     UsersModule,
     NotificationsModule,
     ModerationModule,
+    FollowsModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

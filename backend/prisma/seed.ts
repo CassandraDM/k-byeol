@@ -364,6 +364,30 @@ async function main() {
   }
   console.log(`Seeded ${participationCount} event participations.`);
 
+  // ─── Follows ───────────────────────────────────────────────────────────
+  // Everybody follows the organiser, so a seeded account always has somebody
+  // to hear from. On top of that, the first three users follow each other in
+  // a ring and the first two follow back — that pair is the "friends" case.
+  console.log('Seeding follows...');
+  const follows: Array<[number, number]> = [];
+  for (const u of seedUsers) follows.push([u.id, organizer.id]);
+  for (let i = 0; i < 3 && i < seedUsers.length; i++) {
+    const next = seedUsers[(i + 1) % Math.min(3, seedUsers.length)];
+    if (next.id !== seedUsers[i].id) follows.push([seedUsers[i].id, next.id]);
+  }
+  if (seedUsers.length >= 2) {
+    follows.push([seedUsers[1].id, seedUsers[0].id]); // mutual → friends
+  }
+
+  for (const [followerId, followingId] of follows) {
+    await prisma.follow.upsert({
+      where: { followerId_followingId: { followerId, followingId } },
+      create: { followerId, followingId },
+      update: {},
+    });
+  }
+  console.log(`Seeded ${follows.length} follows.`);
+
   // ─── Conversations & messages ──────────────────────────────────────────
   console.log('Seeding conversations and messages...');
   let convCount = 0;
