@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ModerationService } from '../moderation/moderation.service';
 import { CreateEventDto } from './dto/create-event.dto';
+import { UpdateEventDto } from './dto/update-event.dto';
 import { Prisma } from '@prisma/client';
 
 /** Everything `GET /events` can narrow the map down by. */
@@ -265,7 +266,7 @@ export class EventsService {
     return { message: 'Participation cancelled' };
   }
 
-  async update(userId: number, eventId: number, dto: Partial<CreateEventDto>) {
+  async update(userId: number, eventId: number, dto: UpdateEventDto) {
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
     });

@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
+import { UpdateEventDto } from './dto/update-event.dto';
 import { QueryEventsDto } from './dto/query-events.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { EmailVerifiedGuard } from '../auth/guards/email-verified.guard';
@@ -66,7 +67,7 @@ export class EventsController {
   update(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: Partial<CreateEventDto>,
+    @Body() dto: UpdateEventDto,
   ) {
     const user = req['user'] as { id: number };
     return this.eventsService.update(user.id, id, dto);

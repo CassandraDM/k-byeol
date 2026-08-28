@@ -7,11 +7,47 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
+import { WsException } from '@nestjs/websockets';
+import { UsePipes, ValidationPipe } from '@nestjs/common';
+import { Server, Socket, DefaultEventsMap } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ChatService } from './chat.service';
+import { JoinConversationDto, SendMessageDto } from './dto/chat-events.dto';
+import type { AuthUser, JwtPayload } from '../auth/jwt-payload';
+
+/**
+ * The global ValidationPipe only covers HTTP routes, so socket frames would
+ * otherwise reach the service completely unvalidated. Errors are wrapped in a
+ * WsException: a BadRequestException in a gateway has no response to write to.
+ */
+const wsValidation = new ValidationPipe({
+  whitelist: true,
+  forbidNonWhitelisted: true,
+  transform: true,
+  exceptionFactory: (errors) =>
+    new WsException(
+      errors.flatMap((e) => Object.values(e.constraints ?? {})).join(', ') ||
+        'Invalid payload',
+    ),
+});
+
+/**
+ * socket.io leaves its `data` bag as `any` by default. Binding the generic is
+ * what lets every handler below read `client.data.user.id` as a real number
+ * instead of an unchecked `any` flowing straight into database queries.
+ */
+interface SocketData {
+  user?: AuthUser;
+}
+type AuthedSocket = Socket<
+  DefaultEventsMap,
+  DefaultEventsMap,
+  DefaultEventsMap,
+  SocketData
+>;
 
 @WebSocketGateway({ cors: { origin: '*' } })
+@UsePipes(wsValidation)
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server!: Server;
@@ -21,18 +57,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly chatService: ChatService,
   ) {}
 
-  async handleConnection(client: Socket) {
+  async handleConnection(client: AuthedSocket) {
     try {
       const token =
         (client.handshake.auth as { token?: string }).token ??
-        (client.handshake.headers.authorization?.split(' ')[1]);
+        client.handshake.headers.authorization?.split(' ')[1];
 
       if (!token) {
         client.disconnect();
         return;
       }
 
-      const payload = await this.jwtService.verifyAsync(token);
+      const payload = await this.jwtService.verifyAsync<JwtPayload>(token);
+      if (typeof payload.sub !== 'number') {
+        client.disconnect();
+        return;
+      }
       client.data.user = { id: payload.sub, email: payload.email };
     } catch {
       client.disconnect();
@@ -45,8 +85,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('joinConversation')
   async handleJoinConversation(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { conversationId: number },
+    @ConnectedSocket() client: AuthedSocket,
+    @MessageBody() data: JoinConversationDto,
   ) {
     const userId = client.data.user?.id;
     if (!userId) return;
@@ -56,26 +96,30 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       data.conversationId,
     );
     if (!isParticipant) {
-      client.emit('error', { message: 'Not a participant of this conversation' });
+      client.emit('error', {
+        message: 'Not a participant of this conversation',
+      });
       return;
     }
 
-    client.join(`conversation:${data.conversationId}`);
+    // join()/leave() are async in a clustered adapter; nothing here depends
+    // on completion, so the promise is explicitly discarded.
+    void client.join(`conversation:${data.conversationId}`);
     client.emit('joinedConversation', { conversationId: data.conversationId });
   }
 
   @SubscribeMessage('leaveConversation')
   handleLeaveConversation(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { conversationId: number },
+    @ConnectedSocket() client: AuthedSocket,
+    @MessageBody() data: JoinConversationDto,
   ) {
-    client.leave(`conversation:${data.conversationId}`);
+    void client.leave(`conversation:${data.conversationId}`);
   }
 
   @SubscribeMessage('sendMessage')
   async handleSendMessage(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { conversationId: number; text: string },
+    @ConnectedSocket() client: AuthedSocket,
+    @MessageBody() data: SendMessageDto,
   ) {
     const userId = client.data.user?.id;
     if (!userId) return;
@@ -85,7 +129,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       data.conversationId,
     );
     if (!canWrite) {
-      client.emit('error', { message: 'You do not have write access to this conversation' });
+      client.emit('error', {
+        message: 'You do not have write access to this conversation',
+      });
       return;
     }
 
@@ -102,7 +148,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // rest. Don't make the sender wait on it.
     const sockets = await this.server.in(room).fetchSockets();
     const activeUserIds = sockets
-      .map((s) => s.data.user?.id as number | undefined)
+      .map((s) => (s.data as SocketData).user?.id)
       .filter((id): id is number => typeof id === 'number');
 
     void this.chatService.notifyNewMessage(
