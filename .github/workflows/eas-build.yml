@@ -1,0 +1,49 @@
+name: EAS Build
+
+# Manual only. A native build takes 10-20 minutes of Expo cloud time, so it is
+# triggered when a build is actually wanted (a testable APK, a store
+# submission) rather than on every push.
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: EAS build profile (see mobile/eas.json)
+        type: choice
+        options: [development, preview, production]
+        default: preview
+      platform:
+        description: Target platform
+        type: choice
+        options: [android, ios, all]
+        default: android
+
+jobs:
+  build:
+    name: eas build --profile ${{ inputs.profile }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          # Create the token at expo.dev → Account settings → Access tokens,
+          # then store it as the EXPO_TOKEN repository secret. It is never
+          # printed: the job would simply fail to authenticate without it.
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: eas build --non-interactive --no-wait --profile ${{ inputs.profile }} --platform ${{ inputs.platform }}

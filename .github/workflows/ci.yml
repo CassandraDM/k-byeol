@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push to the same branch cancels the run still in flight — no point
+# paying for a build of code that has already been superseded.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (NestJS)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      # No database is reached: `prisma generate` only reads the schema, and the
+      # unit tests mock PrismaService. These placeholders exist so the config
+      # loads. JWT_SECRET is deliberately >= 32 chars — AuthModule refuses to
+      # boot on anything shorter, which the build would otherwise trip over.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+      JWT_SECRET: ci-placeholder-secret-not-used-to-sign-anything-real
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Lint
+        run: npx eslint "{src,apps,libs,test}/**/*.ts"
+
+      - name: Type-check
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Unit tests
+        run: npm test -- --ci
+
+      - name: End-to-end tests
+        run: npm run test:e2e -- --ci
+
+      - name: Build
+        run: npm run build
+
+      # Advisories are reported without failing the run: a transitive high in a
+      # dev-only dependency shouldn't block a merge. The job log is the input to
+      # the security watch documented in docs/dossier-projet/11-veille-securite.md.
+      - name: Dependency audit (report only)
+        run: npm audit --audit-level=high || true
+
+  mobile:
+    name: Mobile (Expo / React Native)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npx expo lint
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test -- --ci
+
+      - name: Dependency audit (report only)
+        run: npm audit --audit-level=high || true

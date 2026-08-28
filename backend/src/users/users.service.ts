@@ -3,9 +3,26 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ModerationService } from '../moderation/moderation.service';
 import * as bcrypt from 'bcryptjs';
+
+/**
+ * The two shapes `getUserEvents` reads: events the user organises, and events
+ * they only take part in (those carry their organiser). Deriving them from the
+ * Prisma query keeps mapEvent honest — add a field to the `include` and the
+ * type follows, instead of an `any` hiding the mismatch.
+ */
+type OrganizedEvent = Prisma.EventGetPayload<{
+  include: { _count: { select: { participations: true } } };
+}>;
+type ParticipatedEvent = Prisma.EventGetPayload<{
+  include: {
+    _count: { select: { participations: true } };
+    organizer: { select: { id: true; username: true; avatar: true } };
+  };
+}>;
 
 interface UpdateProfileData {
   username?: string;
@@ -168,7 +185,10 @@ export class UsersService {
       }),
     ]);
 
-    const mapEvent = (e: any, isOrganizer: boolean) => ({
+    const mapEvent = (
+      e: OrganizedEvent | ParticipatedEvent,
+      isOrganizer: boolean,
+    ) => ({
       id: e.id,
       title: e.title,
       type: e.type,
@@ -181,7 +201,7 @@ export class UsersService {
       imageUrl: e.imageUrl,
       participantCount: e._count.participations,
       isOrganizer,
-      organizer: e.organizer,
+      organizer: 'organizer' in e ? e.organizer : undefined,
     });
 
     const organizedMapped = organized.map((e) => mapEvent(e, true));
