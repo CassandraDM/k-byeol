@@ -56,6 +56,8 @@ interface ProfileContentProps {
   showHeaderActions?: boolean;
   onboardingCompleted?: boolean;
   onCompleteProfile?: () => void;
+  /** Lets the parent screen label a block dialog with the person's name. */
+  onProfileLoaded?: (username: string) => void;
 }
 
 function formatJoinDate(dateStr: string): string {
@@ -78,6 +80,7 @@ export function ProfileContent({
   showHeaderActions,
   onboardingCompleted,
   onCompleteProfile,
+  onProfileLoaded,
 }: ProfileContentProps) {
   const router = useRouter();
   const { token } = useAuthStore();
@@ -88,6 +91,7 @@ export function ProfileContent({
     past: [],
   });
   const [loading, setLoading] = useState(true);
+  const [unavailable, setUnavailable] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!token || !userId) return;
@@ -96,14 +100,23 @@ export function ProfileContent({
         apiFetch(`/users/${userId}`),
         apiFetch(`/users/${userId}/events`),
       ]);
-      if (profileRes.ok) setProfile(await profileRes.json());
+      if (profileRes.ok) {
+        const data = await profileRes.json();
+        setProfile(data);
+        setUnavailable(false);
+        onProfileLoaded?.(data.username);
+      } else {
+        // A blocked profile answers 404 on purpose. Without this the screen
+        // would sit on its spinner forever.
+        setUnavailable(true);
+      }
       if (eventsRes.ok) setEvents(await eventsRes.json());
     } catch (e) {
       console.error("[ProfileContent] Load error:", e);
     } finally {
       setLoading(false);
     }
-  }, [token, userId]);
+  }, [token, userId, onProfileLoaded]);
 
   useFocusEffect(
     useCallback(() => {
@@ -111,6 +124,22 @@ export function ProfileContent({
       loadData();
     }, [loadData]),
   );
+
+  if (!loading && unavailable) {
+    return (
+      <View style={styles.loader}>
+        <Ionicons
+          name="person-remove-outline"
+          size={40}
+          color="rgba(207, 126, 242, 0.6)"
+        />
+        {/* Deliberately vague: naming the block would leak that it exists. */}
+        <Text style={styles.unavailableText}>
+          This profile isn&apos;t available.
+        </Text>
+      </View>
+    );
+  }
 
   if (loading || !profile) {
     return (
@@ -324,6 +353,13 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
     alignItems: "center",
     justifyContent: "center",
+  },
+  unavailableText: {
+    fontFamily: CustomFonts.moyamoya,
+    fontSize: 16,
+    color: Palette.purple,
+    textAlign: "center",
+    marginTop: 10,
   },
   header: {
     paddingBottom: 12,

@@ -58,6 +58,23 @@ export default function SettingsScreen() {
           </Pressable>
         </View>
 
+        {/* Safety section */}
+        <Text style={styles.sectionTitle}>Safety</Text>
+        <View style={styles.card}>
+          <Pressable
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+            onPress={() => router.push('/settings/blocked' as any)}>
+            <Ionicons name="ban-outline" size={20} color={Palette.purple} />
+            <Text style={styles.rowText}>Blocked users</Text>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={Palette.purple}
+            />
+          </Pressable>
+
+        </View>
+
         {/* Log out */}
         <View style={styles.logoutWrap}>
           <Pressable

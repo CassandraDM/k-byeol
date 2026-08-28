@@ -55,8 +55,9 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get(':id')
-  getById(@Param('id', ParseIntPipe) id: number) {
-    return this.usersService.getProfile(id);
+  getById(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
+    const user = req['user'] as { id: number };
+    return this.usersService.getProfile(id, user.id);
   }
 
   @Put(':id')

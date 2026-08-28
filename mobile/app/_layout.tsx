@@ -59,6 +59,7 @@ export default function RootLayout() {
         {/* Settings */}
         <Stack.Screen name="settings/index" options={{ headerShown: false }} />
         <Stack.Screen name="settings/edit-profile" options={{ headerShown: false }} />
+        <Stack.Screen name="settings/blocked" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
       <StatusBar style="auto" />

@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsBoolean,
   IsInt,
   IsOptional,
   IsString,
@@ -26,4 +27,9 @@ export class UpdatePreferencesDto {
   @IsArray()
   @IsInt({ each: true })
   groupIds?: number[];
+
+  /** Whether events from blocked users stay off the map and out of search. */
+  @IsOptional()
+  @IsBoolean()
+  hideBlockedEvents?: boolean;
 }

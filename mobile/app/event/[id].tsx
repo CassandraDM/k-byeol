@@ -14,6 +14,8 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { Image } from "expo-image";
 
 import { ThemedText } from "@/components/themed-text";
+import { ModerationMenu } from "@/components/moderation-menu";
+import { EventParticipants } from "@/components/event-participants";
 import { CustomFonts, Palette } from "@/constants/theme";
 import { EVENT_TYPE_CONFIG } from "@/constants/event-types";
 import { useAuthStore } from "@/stores/auth-store";
@@ -218,9 +220,15 @@ export default function EventDetailScreen() {
 
         {/* Header */}
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={Palette.purple} />
-          </Pressable>
+          <View style={styles.headerRow}>
+            <Pressable onPress={() => router.back()} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color={Palette.purple} />
+            </Pressable>
+            {/* No point reporting your own event. */}
+            {!isOwner && (
+              <ModerationMenu targetType="EVENT" targetId={event.id} />
+            )}
+          </View>
           <ThemedText style={styles.title}>{event.title}</ThemedText>
           <View style={styles.badgeRow}>
             <View style={[styles.badge, { backgroundColor: config.color }]}>
@@ -316,6 +324,12 @@ export default function EventDetailScreen() {
               {participantCount} participant{participantCount !== 1 ? "s" : ""}
             </ThemedText>
           </View>
+
+          {/* Re-fetched whenever the viewer joins or leaves. */}
+          <EventParticipants
+            eventId={event.id}
+            refreshKey={participantCount}
+          />
         </View>
 
         {/* Description */}
@@ -460,6 +474,11 @@ const styles = StyleSheet.create({
   header: {
     gap: 10,
     marginBottom: 20,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   backButton: {
     width: 40,

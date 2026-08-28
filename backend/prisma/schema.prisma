@@ -35,8 +35,49 @@ model User {
   passwordResetTokens PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
   deviceTokens        DeviceToken[]
+  reportsSubmitted    Report[]                 @relation("ReportsSubmitted")
+  blocksMade          Block[]                  @relation("BlocksMade")
+  blocksReceived      Block[]                  @relation("BlocksReceived")
 
   @@map("users")
+}
+
+enum ReportTargetType {
+  USER
+  EVENT
+}
+
+/// A moderation report filed by a user against another user or an event.
+/// Kept even if the target disappears, so moderators keep the audit trail.
+model Report {
+  id         Int              @id @default(autoincrement())
+  reporterId Int              @map("reporter_id")
+  targetType ReportTargetType @map("target_type")
+  targetId   Int              @map("target_id")
+  reason     String
+  status     String           @default("pending") @db.VarChar(20)
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  reporter User @relation("ReportsSubmitted", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@index([reporterId])
+  @@index([targetType, targetId])
+  @@map("reports")
+}
+
+/// One user blocking another. Visibility is cut both ways: the pair simply
+/// stops seeing each other, whichever side filed the block.
+model Block {
+  blockerId Int      @map("blocker_id")
+  blockedId Int      @map("blocked_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  blocker User @relation("BlocksMade", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("BlocksReceived", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+  @@map("blocks")
 }
 
 /// An Expo push token for one of a user's devices. A user can be signed in on
@@ -116,6 +157,10 @@ model UserPreferences {
   cityCode       String? @map("city_code") @db.VarChar(10)
   cityName       String? @map("city_name") @db.VarChar(255)
   cityPostalCode String? @map("city_postal_code") @db.VarChar(10)
+
+  /// When true, events organised by someone you blocked are kept off the map
+  /// and out of search results. Defaults to hiding — the protective posture.
+  hideBlockedEvents Boolean @default(true) @map("hide_blocked_events")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

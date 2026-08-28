@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ModerationService } from '../moderation/moderation.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { Prisma } from '@prisma/client';
 
@@ -22,7 +23,10 @@ export interface EventFilters {
 
 @Injectable()
 export class EventsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly moderation: ModerationService,
+  ) {}
 
   async create(organizerId: number, dto: CreateEventDto) {
     const event = await this.prisma.event.create({
@@ -45,6 +49,16 @@ export class EventsService {
 
   async findByLocation(userId: number, filters: EventFilters) {
     const { lat, lng, radiusKm, q, dateFrom, dateTo } = filters;
+
+    // Opt-out setting: by default a blocked person's events stay off the map.
+    const prefs = await this.prisma.userPreferences.findUnique({
+      where: { userId },
+      select: { hideBlockedEvents: true },
+    });
+    const hideBlockedEvents = prefs?.hideBlockedEvents ?? true;
+    const hidden = hideBlockedEvents
+      ? await this.moderation.hiddenUserIds(userId)
+      : [];
 
     // The haversine distance in km, reused by SELECT, WHERE and ORDER BY.
     // `least(1, …)` guards against floating-point drift pushing the argument
@@ -76,6 +90,9 @@ export class EventsService {
     }
     if (dateTo) {
       conditions.push(Prisma.sql`date <= ${dateTo}::date`);
+    }
+    if (hidden.length > 0) {
+      conditions.push(Prisma.sql`organizer_id NOT IN (${Prisma.join(hidden)})`);
     }
 
     const events = await this.prisma.$queryRaw<
@@ -131,13 +148,20 @@ export class EventsService {
   }
 
   async findById(id: number, userId: number) {
+    const hidden = await this.moderation.hiddenUserIds(userId);
+
     const event = await this.prisma.event.findUnique({
       where: { id },
       include: {
         organizer: {
           select: { id: true, username: true, avatar: true },
         },
-        _count: { select: { participations: true } },
+        _count: {
+          select: {
+            // Blocked people are invisible, so they must not be counted either.
+            participations: { where: { userId: { notIn: hidden } } },
+          },
+        },
         participations: {
           where: { userId },
           select: { userId: true },
@@ -165,6 +189,43 @@ export class EventsService {
       isParticipating: event.participations.length > 0,
       createdAt: event.createdAt,
     };
+  }
+
+  /**
+   * Who is going, minus anyone blocked either way round. The organizer is
+   * listed first — they're the reference point for the whole event.
+   */
+  async findParticipants(eventId: number, viewerId: number) {
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: {
+        organizerId: true,
+        organizer: { select: { id: true, username: true, avatar: true } },
+      },
+    });
+    if (!event) {
+      throw new NotFoundException('Event not found');
+    }
+
+    const hidden = await this.moderation.hiddenUserIds(viewerId);
+
+    const participations = await this.prisma.eventParticipation.findMany({
+      where: {
+        eventId,
+        userId: { notIn: [...hidden, event.organizerId] },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        user: { select: { id: true, username: true, avatar: true } },
+      },
+    });
+
+    const organizerHidden = hidden.includes(event.organizerId);
+
+    return [
+      ...(organizerHidden ? [] : [{ ...event.organizer, isOrganizer: true }]),
+      ...participations.map((p) => ({ ...p.user, isOrganizer: false })),
+    ];
   }
 
   async participate(userId: number, eventId: number) {
@@ -205,7 +266,9 @@ export class EventsService {
   }
 
   async update(userId: number, eventId: number, dto: Partial<CreateEventDto>) {
-    const event = await this.prisma.event.findUnique({ where: { id: eventId } });
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+    });
     if (!event) throw new NotFoundException('Event not found');
     if (event.organizerId !== userId) {
       throw new ForbiddenException('You are not the organizer of this event');
@@ -237,7 +300,9 @@ export class EventsService {
   }
 
   async remove(userId: number, eventId: number) {
-    const event = await this.prisma.event.findUnique({ where: { id: eventId } });
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+    });
     if (!event) throw new NotFoundException('Event not found');
     if (event.organizerId !== userId) {
       throw new ForbiddenException('You are not the organizer of this event');
