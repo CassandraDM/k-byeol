@@ -56,6 +56,7 @@ export default function RootLayout() {
         <Stack.Screen name="chat/[conversationId]" options={{ headerShown: false }} />
         {/* Profile */}
         <Stack.Screen name="profile/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="profile/connections" options={{ headerShown: false }} />
         {/* Settings */}
         <Stack.Screen name="settings/index" options={{ headerShown: false }} />
         <Stack.Screen name="settings/edit-profile" options={{ headerShown: false }} />

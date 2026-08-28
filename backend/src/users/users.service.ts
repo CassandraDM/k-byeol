@@ -6,6 +6,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ModerationService } from '../moderation/moderation.service';
+import { FollowsService } from '../follows/follows.service';
 import * as bcrypt from 'bcryptjs';
 
 /**
@@ -37,6 +38,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly moderation: ModerationService,
+    private readonly follows: FollowsService,
   ) {}
 
   /**
@@ -79,6 +81,11 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
+    // Counters and the viewer's side of the relationship travel with the
+    // profile: the header renders them, and the follow button needs to know
+    // which way round it is before the user can touch it.
+    const follow = await this.follows.state(viewerId, userId);
+
     return {
       id: user.id,
       username: user.username,
@@ -94,6 +101,11 @@ export class UsersService {
           }
         : null,
       fandoms: user.preferences?.groups.map((g) => g.group) ?? [],
+      followerCount: follow.followerCount,
+      followingCount: follow.followingCount,
+      isFollowing: follow.isFollowing,
+      followsYou: follow.followsYou,
+      isFriend: follow.isFriend,
     };
   }
 

@@ -65,6 +65,18 @@ export class ModerationService {
       update: {},
     });
 
+    // A block ends the follow in both directions. Leaving the rows behind
+    // would keep pushing "they just added an event" at two people who have
+    // agreed to stop seeing each other.
+    await this.prisma.follow.deleteMany({
+      where: {
+        OR: [
+          { followerId: blockerId, followingId: blockedId },
+          { followerId: blockedId, followingId: blockerId },
+        ],
+      },
+    });
+
     return {
       blocked: true,
       conflictingEvents: await this.conflicts(blockerId, blockedId),
