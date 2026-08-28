@@ -1,8 +1,11 @@
 name: CI
 
 on:
+  # develop is the integration branch — every feature lands there. main only
+  # moves on a release, but it is checked too so a release can never be the
+  # first time the pipeline runs.
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
 
 # A new push to the same branch cancels the run still in flight — no point
