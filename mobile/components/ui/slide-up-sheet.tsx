@@ -1,5 +1,16 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
-import { Animated, Modal, Pressable, StyleSheet, View } from 'react-native';
+import {
+  Animated,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+
+import { PageBackground } from '@/constants/theme';
 
 interface SlideUpSheetProps {
   visible: boolean;
@@ -42,13 +53,23 @@ export function SlideUpSheet({ visible, onClose, children }: SlideUpSheetProps) 
       transparent
       animationType="fade"
       onRequestClose={onClose}>
-      <View style={styles.backdrop}>
+      {/* A Modal sits outside the screen's layout, so Android's adjustResize
+          never reaches it — the sheet has to lift itself above the keyboard. */}
+      <KeyboardAvoidingView
+        style={styles.backdrop}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <Animated.View
           style={[styles.sheet, { transform: [{ translateY }] }]}>
+          {/* Same chrome as the filter sheet, so every sheet reads alike. */}
+          <LinearGradient
+            colors={PageBackground}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.grabber} />
           {children}
         </Animated.View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -59,10 +80,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
+  grabber: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(207, 126, 242, 0.35)',
+    marginBottom: 8,
+  },
   sheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
     paddingBottom: 24,
     paddingTop: 8,
     alignItems: 'center',

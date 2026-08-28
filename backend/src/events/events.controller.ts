@@ -56,6 +56,12 @@ export class EventsController {
     return this.eventsService.findById(id, user.id);
   }
 
+  @Get(':id/participants')
+  findParticipants(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
+    const user = req['user'] as { id: number };
+    return this.eventsService.findParticipants(id, user.id);
+  }
+
   @Patch(':id')
   update(
     @Req() req: Request,
@@ -67,19 +73,13 @@ export class EventsController {
   }
 
   @Delete(':id')
-  remove(
-    @Req() req: Request,
-    @Param('id', ParseIntPipe) id: number,
-  ) {
+  remove(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
     const user = req['user'] as { id: number };
     return this.eventsService.remove(user.id, id);
   }
 
   @Post(':id/participate')
-  participate(
-    @Req() req: Request,
-    @Param('id', ParseIntPipe) id: number,
-  ) {
+  participate(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
     const user = req['user'] as { id: number };
     return this.eventsService.participate(user.id, id);
   }

@@ -17,9 +17,12 @@ export class PreferencesService {
     });
 
     if (!prefs) {
+      // Mirror the column default so a user with no row yet still gets the
+      // protective setting rather than `undefined`.
       return {
         city: null,
         groups: [],
+        hideBlockedEvents: true,
       };
     }
 
@@ -36,6 +39,7 @@ export class PreferencesService {
         name: pg.group.name,
         slug: pg.group.slug,
       })),
+      hideBlockedEvents: prefs.hideBlockedEvents,
     };
   }
 
@@ -64,11 +68,15 @@ export class PreferencesService {
         cityCode: dto.cityCode ?? null,
         cityName: dto.cityName ?? null,
         cityPostalCode: dto.cityPostalCode ?? null,
+        ...(dto.hideBlockedEvents !== undefined && {
+          hideBlockedEvents: dto.hideBlockedEvents,
+        }),
       },
       update: {
         cityCode: dto.cityCode ?? undefined,
         cityName: dto.cityName ?? undefined,
         cityPostalCode: dto.cityPostalCode ?? undefined,
+        hideBlockedEvents: dto.hideBlockedEvents ?? undefined,
       },
     });
 

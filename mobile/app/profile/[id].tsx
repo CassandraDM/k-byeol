@@ -2,11 +2,13 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useState } from 'react';
 
 import { CustomFonts, Palette } from '@/constants/theme';
 import { useAuthStore } from '@/stores/auth-store';
 import { getUserIdFromToken } from '@/utils/jwt';
 import { ProfileContent } from '@/components/profile-content';
+import { ModerationMenu } from '@/components/moderation-menu';
 
 export default function ProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -15,6 +17,8 @@ export default function ProfileScreen() {
   const currentUserId = getUserIdFromToken(token);
   const profileId = Number(id);
   const isOwnProfile = currentUserId === profileId;
+  // Filled in by ProfileContent so the block dialog can name the person.
+  const [username, setUsername] = useState<string | null>(null);
 
   return (
     <LinearGradient colors={['#EDE7FF', '#F2EDFF']} style={styles.flex}>
@@ -29,12 +33,24 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-back" size={28} color={Palette.purple} />
           </Pressable>
           <Text style={styles.headerTitle}>Profile</Text>
-          <View style={styles.iconSlot} />
+          <View style={styles.iconSlot}>
+            {/* Reporting or blocking yourself makes no sense. */}
+            {!isOwnProfile && (
+              <ModerationMenu
+                targetType="USER"
+                targetId={profileId}
+                targetName={username}
+                canBlock
+                onBlocked={() => router.back()}
+              />
+            )}
+          </View>
         </View>
 
         <ProfileContent
           userId={profileId}
           isOwnProfile={isOwnProfile}
+          onProfileLoaded={setUsername}
         />
       </ScrollView>
     </LinearGradient>

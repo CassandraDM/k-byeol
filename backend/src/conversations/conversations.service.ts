@@ -5,11 +5,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ModerationService } from '../moderation/moderation.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 
 @Injectable()
 export class ConversationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly moderation: ModerationService,
+  ) {}
 
   async create(userId: number, dto: CreateConversationDto) {
     // Ensure the current user is included in participants
@@ -17,7 +21,15 @@ export class ConversationsService {
       dto.participantIds.push(userId);
     }
 
-    const type = dto.type ?? (dto.participantIds.length > 2 ? 'GROUP' : 'PRIVATE');
+    const hidden = await this.moderation.hiddenUserIds(userId);
+    if (dto.participantIds.some((id) => hidden.includes(id))) {
+      throw new ForbiddenException(
+        'You cannot start a conversation with this user',
+      );
+    }
+
+    const type =
+      dto.type ?? (dto.participantIds.length > 2 ? 'GROUP' : 'PRIVATE');
 
     // For PRIVATE 1-on-1: check if conversation already exists
     if (type === 'PRIVATE' && dto.participantIds.length === 2) {
@@ -32,7 +44,9 @@ export class ConversationsService {
 
     // PRIVATE conversations must have exactly 2 participants
     if (type === 'PRIVATE' && dto.participantIds.length !== 2) {
-      throw new BadRequestException('Private conversations must have exactly 2 participants');
+      throw new BadRequestException(
+        'Private conversations must have exactly 2 participants',
+      );
     }
 
     // Validate that all participant users exist
@@ -52,15 +66,16 @@ export class ConversationsService {
         participants: {
           create: dto.participantIds.map((id) => ({
             userId: id,
-            role: type === 'CREW'
-              ? (id === userId ? 'OWNER' : 'MEMBER')
-              : 'MEMBER',
+            role:
+              type === 'CREW' ? (id === userId ? 'OWNER' : 'MEMBER') : 'MEMBER',
           })),
         },
       },
       include: {
         participants: {
-          include: { user: { select: { id: true, username: true, avatar: true } } },
+          include: {
+            user: { select: { id: true, username: true, avatar: true } },
+          },
         },
       },
     });
@@ -79,12 +94,24 @@ export class ConversationsService {
       ],
       include: {
         participants: {
-          include: { user: { select: { id: true, username: true, avatar: true } } },
+          include: {
+            user: { select: { id: true, username: true, avatar: true } },
+          },
         },
       },
     });
 
-    return conversations.map((c) => this.formatConversation(c));
+    const hidden = await this.moderation.hiddenUserIds(userId);
+
+    return conversations
+      .filter((c) => {
+        // A private thread with a blocked user disappears entirely. Group and
+        // crew threads stay — other members are still there — and the blocked
+        // member's messages are filtered out by getMessages instead.
+        if (c.type !== 'PRIVATE') return true;
+        return !c.participants.some((p) => hidden.includes(p.userId));
+      })
+      .map((c) => this.formatConversation(c));
   }
 
   async getMessages(
@@ -98,12 +125,17 @@ export class ConversationsService {
       where: { userId_conversationId: { userId, conversationId } },
     });
     if (!participant) {
-      throw new ForbiddenException('You are not a participant of this conversation');
+      throw new ForbiddenException(
+        'You are not a participant of this conversation',
+      );
     }
+
+    const hidden = await this.moderation.hiddenUserIds(userId);
 
     const messages = await this.prisma.message.findMany({
       where: {
         conversationId,
+        senderId: { notIn: hidden },
         ...(before ? { id: { lt: before } } : {}),
       },
       orderBy: { createdAt: 'desc' },
@@ -122,7 +154,11 @@ export class ConversationsService {
     }));
   }
 
-  async addParticipants(userId: number, conversationId: number, userIds: number[]) {
+  async addParticipants(
+    userId: number,
+    conversationId: number,
+    userIds: number[],
+  ) {
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
     });
@@ -132,7 +168,9 @@ export class ConversationsService {
 
     // Cannot add members to private conversations
     if (conversation.type === 'PRIVATE') {
-      throw new BadRequestException('Cannot add members to a private conversation');
+      throw new BadRequestException(
+        'Cannot add members to a private conversation',
+      );
     }
 
     // For CREW: only owner can add members
@@ -141,7 +179,9 @@ export class ConversationsService {
       where: { userId_conversationId: { userId, conversationId } },
     });
     if (!requester) {
-      throw new ForbiddenException('You are not a participant of this conversation');
+      throw new ForbiddenException(
+        'You are not a participant of this conversation',
+      );
     }
     if (conversation.type === 'CREW' && requester.role !== 'OWNER') {
       throw new ForbiddenException('Only the owner can add members to a crew');
@@ -166,7 +206,11 @@ export class ConversationsService {
 
     if (newUserIds.length > 0) {
       await this.prisma.conversationParticipant.createMany({
-        data: newUserIds.map((id) => ({ userId: id, conversationId, role: 'MEMBER' as const })),
+        data: newUserIds.map((id) => ({
+          userId: id,
+          conversationId,
+          role: 'MEMBER' as const,
+        })),
       });
     }
 
@@ -174,7 +218,9 @@ export class ConversationsService {
       where: { id: conversationId },
       include: {
         participants: {
-          include: { user: { select: { id: true, username: true, avatar: true } } },
+          include: {
+            user: { select: { id: true, username: true, avatar: true } },
+          },
         },
       },
     });
@@ -182,45 +228,65 @@ export class ConversationsService {
     return this.formatConversation(updated!);
   }
 
-  async grantWriter(ownerId: number, conversationId: number, targetUserId: number) {
+  async grantWriter(
+    ownerId: number,
+    conversationId: number,
+    targetUserId: number,
+  ) {
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
     });
     if (!conversation || conversation.type !== 'CREW') {
-      throw new BadRequestException('This action is only available for crew conversations');
+      throw new BadRequestException(
+        'This action is only available for crew conversations',
+      );
     }
     if (conversation.ownerId !== ownerId) {
       throw new ForbiddenException('Only the owner can grant write access');
     }
 
     const participant = await this.prisma.conversationParticipant.findUnique({
-      where: { userId_conversationId: { userId: targetUserId, conversationId } },
+      where: {
+        userId_conversationId: { userId: targetUserId, conversationId },
+      },
     });
     if (!participant) {
-      throw new NotFoundException('User is not a participant of this conversation');
+      throw new NotFoundException(
+        'User is not a participant of this conversation',
+      );
     }
 
     await this.prisma.conversationParticipant.update({
-      where: { userId_conversationId: { userId: targetUserId, conversationId } },
+      where: {
+        userId_conversationId: { userId: targetUserId, conversationId },
+      },
       data: { role: 'WRITER' },
     });
 
     return { message: 'Write access granted' };
   }
 
-  async revokeWriter(ownerId: number, conversationId: number, targetUserId: number) {
+  async revokeWriter(
+    ownerId: number,
+    conversationId: number,
+    targetUserId: number,
+  ) {
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
     });
     if (!conversation || conversation.type !== 'CREW') {
-      throw new BadRequestException('This action is only available for crew conversations');
+      throw new BadRequestException(
+        'This action is only available for crew conversations',
+      );
     }
     if (conversation.ownerId !== ownerId) {
       throw new ForbiddenException('Only the owner can revoke write access');
     }
 
     await this.prisma.conversationParticipant.update({
-      where: { userId_conversationId: { userId: targetUserId, conversationId } },
+      where: {
+        userId_conversationId: { userId: targetUserId, conversationId },
+      },
       data: { role: 'MEMBER' },
     });
 
@@ -235,7 +301,9 @@ export class ConversationsService {
       throw new NotFoundException('Conversation not found');
     }
     if (conversation.type !== 'CREW') {
-      throw new BadRequestException('You can only self-join crew conversations');
+      throw new BadRequestException(
+        'You can only self-join crew conversations',
+      );
     }
 
     // Check if already a participant
@@ -282,7 +350,9 @@ export class ConversationsService {
       },
       include: {
         participants: {
-          include: { user: { select: { id: true, username: true, avatar: true } } },
+          include: {
+            user: { select: { id: true, username: true, avatar: true } },
+          },
         },
         _count: { select: { participants: true } },
       },

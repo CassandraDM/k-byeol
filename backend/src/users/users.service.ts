@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ModerationService } from '../moderation/moderation.service';
 import * as bcrypt from 'bcryptjs';
 
 interface UpdateProfileData {
@@ -16,12 +17,24 @@ interface UpdateProfileData {
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly moderation: ModerationService,
+  ) {}
 
   /**
    * Returns a user's public profile including their favourite K-pop groups (fandoms).
    */
-  async getProfile(userId: number) {
+  async getProfile(userId: number, viewerId?: number) {
+    // A blocked profile reads as gone rather than forbidden — saying "you are
+    // blocked" would leak that the block exists.
+    if (
+      viewerId !== undefined &&
+      (await this.moderation.isHidden(viewerId, userId))
+    ) {
+      throw new NotFoundException('User not found');
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {

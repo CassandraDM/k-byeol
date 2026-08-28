@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ModerationService } from '../moderation/moderation.service';
 
 /** Push bodies get truncated so the notification stays readable. */
 const PREVIEW_MAX_LENGTH = 120;
@@ -10,9 +11,13 @@ export class ChatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly moderation: ModerationService,
   ) {}
 
-  async isParticipant(userId: number, conversationId: number): Promise<boolean> {
+  async isParticipant(
+    userId: number,
+    conversationId: number,
+  ): Promise<boolean> {
     const participant = await this.prisma.conversationParticipant.findUnique({
       where: { userId_conversationId: { userId, conversationId } },
     });
@@ -29,6 +34,18 @@ export class ChatService {
       where: { userId_conversationId: { userId, conversationId } },
     });
     if (!participant) return false;
+
+    // A block silences a 1-on-1 thread in both directions. Group and crew
+    // threads stay open — the blocked pair simply stops seeing each other's
+    // messages, which getMessages and the push fan-out take care of.
+    if (conversation.type === 'PRIVATE') {
+      const others = await this.prisma.conversationParticipant.findMany({
+        where: { conversationId, userId: { not: userId } },
+        select: { userId: true },
+      });
+      const hidden = await this.moderation.hiddenUserIds(userId);
+      if (others.some((o) => hidden.includes(o.userId))) return false;
+    }
 
     // PRIVATE and GROUP: all participants can write
     if (conversation.type !== 'CREW') return true;
@@ -74,7 +91,11 @@ export class ChatService {
     text: string,
     activeUserIds: number[] = [],
   ): Promise<void> {
-    const skip = new Set([senderId, ...activeUserIds]);
+    const skip = new Set([
+      senderId,
+      ...activeUserIds,
+      ...(await this.moderation.hiddenUserIds(senderId)),
+    ]);
 
     const [conversation, participants] = await Promise.all([
       this.prisma.conversation.findUnique({

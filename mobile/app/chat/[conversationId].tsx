@@ -16,6 +16,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { io, Socket } from 'socket.io-client';
 
+import { ModerationMenu } from '@/components/moderation-menu';
 import { CustomFonts, Palette } from '@/constants/theme';
 import { API_URL } from '@/constants/api';
 import { apiFetch } from '@/utils/api';
@@ -163,6 +164,13 @@ export default function ChatThreadScreen() {
     setSending(false);
   };
 
+  // In a 1-on-1 the other participant is the block target. Group and crew
+  // threads have no single "them", so moderation happens from each profile.
+  const otherParticipant =
+    conversation?.type === 'PRIVATE'
+      ? (conversation.participants.find((p) => p.id !== currentUserId) ?? null)
+      : null;
+
   // Compute header title
   const headerTitle = (() => {
     if (!conversation) return 'Chat';
@@ -252,11 +260,15 @@ export default function ChatThreadScreen() {
             {headerTitle}
           </Text>
           <View style={styles.iconSlot}>
-            <Ionicons
-              name="ellipsis-horizontal"
-              size={22}
-              color={Palette.purple}
-            />
+            {otherParticipant && (
+              <ModerationMenu
+                targetType="USER"
+                targetId={otherParticipant.id}
+                targetName={otherParticipant.username}
+                canBlock
+                onBlocked={() => router.back()}
+              />
+            )}
           </View>
         </View>
 
