@@ -11,24 +11,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { DateTimeField } from '@/components/ui/date-time-field';
 import { CustomFonts, PageBackground, Palette } from '@/constants/theme';
+import { DEFAULT_FILTERS, type EventFilters } from '@/utils/event-filters';
 
-/** Everything the map screen can narrow events down by. */
-export interface EventFilters {
-  /** Keyword typed in the search bar (lives here so "reset" clears it too). */
-  q: string;
-  dateFrom: Date | null;
-  dateTo: Date | null;
-  radiusKm: number;
-}
-
-export const DEFAULT_RADIUS_KM = 50;
-
-export const DEFAULT_FILTERS: EventFilters = {
-  q: '',
-  dateFrom: null,
-  dateTo: null,
-  radiusKm: DEFAULT_RADIUS_KM,
-};
+// Re-exported so the map screen keeps importing filters and sheet from one
+// place, even though the logic now lives in utils/event-filters.ts.
+export {
+  buildEventsQuery,
+  countActiveFilters,
+  DEFAULT_FILTERS,
+  DEFAULT_RADIUS_KM,
+  isNarrowed,
+  type EventFilters,
+} from '@/utils/event-filters';
 
 const RADIUS_OPTIONS = [1, 5, 10, 25, 50, 100];
 
@@ -40,52 +34,6 @@ const TAB_BAR_HEIGHT = 84;
  * screen; on this pale sheet it needs the brand purple instead.
  */
 const DATE_LABEL_COLOR = Palette.purple;
-
-/**
- * How many of *this sheet's* filters differ from the defaults — drives the
- * badge on the filter button.
- *
- * The keyword is deliberately excluded: it's already visible in the search
- * bar, so counting it would flag the button for something that isn't hidden
- * behind it. Use `isNarrowed` when you need "is anything filtering at all".
- */
-export function countActiveFilters(filters: EventFilters): number {
-  let count = 0;
-  if (filters.dateFrom) count += 1;
-  if (filters.dateTo) count += 1;
-  if (filters.radiusKm !== DEFAULT_RADIUS_KM) count += 1;
-  return count;
-}
-
-/** True when anything at all is narrowing the results, keyword included. */
-export function isNarrowed(filters: EventFilters): boolean {
-  return countActiveFilters(filters) > 0 || filters.q.trim().length > 0;
-}
-
-/** YYYY-MM-DD in the user's own timezone (toISOString would shift the day). */
-function toIsoDate(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-/** Serialises filters into the query string `GET /events` expects. */
-export function buildEventsQuery(
-  coords: { latitude: number; longitude: number },
-  filters: EventFilters,
-): string {
-  const params = new URLSearchParams({
-    lat: String(coords.latitude),
-    lng: String(coords.longitude),
-    radiusKm: String(filters.radiusKm),
-  });
-
-  const keyword = filters.q.trim();
-  if (keyword) params.set('q', keyword);
-  if (filters.dateFrom) params.set('dateFrom', toIsoDate(filters.dateFrom));
-  if (filters.dateTo) params.set('dateTo', toIsoDate(filters.dateTo));
-
-  return params.toString();
-}
 
 interface EventFilterSheetProps {
   visible: boolean;

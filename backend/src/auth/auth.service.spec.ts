@@ -7,6 +7,19 @@ import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 
+/**
+ * Reads one argument of a recorded mock call with a declared shape.
+ *
+ * `mock.calls[0][0]` is `any`, so every assertion made on it below would be
+ * unchecked. Stating the expected shape here means a change to the Prisma call
+ * surfaces as a compile error in the test rather than a silently passing
+ * assertion on `undefined`.
+ */
+const callArg = <T>(mock: jest.Mock, argIndex = 0, callIndex = 0): T => {
+  const args = mock.mock.calls[callIndex] as unknown[];
+  return args[argIndex] as T;
+};
+
 describe('AuthService — password reset', () => {
   let service: AuthService;
   let prisma: {
@@ -85,17 +98,17 @@ describe('AuthService — password reset', () => {
       });
 
       // A token is stored — but only its hash, never the raw value
-      const stored = prisma.passwordResetToken.create.mock.calls[0][0].data;
+      const stored = callArg<{
+        data: { userId: number; tokenHash: string; expiresAt: Date };
+      }>(prisma.passwordResetToken.create).data;
       expect(stored.userId).toBe(7);
       expect(stored.tokenHash).toMatch(/^[a-f0-9]{64}$/); // sha256 hex
       expect(stored.expiresAt.getTime()).toBeGreaterThan(Date.now());
 
       // The email gets the RAW code (6 digits), and its hash matches what we stored
-      const rawToken: string = mail.sendPasswordReset.mock.calls[0][1];
+      const rawToken = callArg<string>(mail.sendPasswordReset, 1);
       expect(rawToken).toMatch(/^\d{6}$/);
-      const expectedHash = createHash('sha256')
-        .update(rawToken)
-        .digest('hex');
+      const expectedHash = createHash('sha256').update(rawToken).digest('hex');
       expect(expectedHash).toBe(stored.tokenHash);
       expect(mail.sendPasswordReset).toHaveBeenCalledWith(
         'a@b.com',
@@ -109,10 +122,10 @@ describe('AuthService — password reset', () => {
 
   describe('socialLogin', () => {
     const mockSupabaseUser = (user: object) => {
-      (global as any).fetch = jest.fn().mockResolvedValue({
+      globalThis.fetch = jest.fn().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve(user),
-      });
+      }) as unknown as typeof fetch;
     };
 
     beforeEach(() => {
@@ -120,7 +133,7 @@ describe('AuthService — password reset', () => {
       process.env.SUPABASE_ANON_KEY = 'anon-key';
     });
     afterEach(() => {
-      (global as any).fetch = undefined;
+      globalThis.fetch = undefined as unknown as typeof fetch;
     });
 
     it('creates a verified profile on first Google login', async () => {
@@ -142,7 +155,9 @@ describe('AuthService — password reset', () => {
 
       expect(res.isNewUser).toBe(true);
       expect(res.emailVerified).toBe(true);
-      const created = prisma.user.create.mock.calls[0][0].data;
+      const created = callArg<{
+        data: { provider: string; emailVerified: boolean; email: string };
+      }>(prisma.user.create).data;
       expect(created.provider).toBe('google');
       expect(created.emailVerified).toBe(true);
       expect(created.email).toBe('new@gmail.com');
@@ -197,7 +212,10 @@ describe('AuthService — password reset', () => {
 
       expect(res).toEqual({ emailVerified: true });
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-      const userUpdate = prisma.user.update.mock.calls[0][0];
+      const userUpdate = callArg<{
+        where: { id: number };
+        data: { emailVerified: boolean };
+      }>(prisma.user.update);
       expect(userUpdate.where).toEqual({ id: 7 });
       expect(userUpdate.data.emailVerified).toBe(true);
     });
@@ -224,9 +242,9 @@ describe('AuthService — password reset', () => {
         expiresAt: new Date(Date.now() - 1000),
       });
 
-      await expect(
-        service.verifyEmail(7, { code: '123456' }),
-      ).rejects.toThrow(/expired/i);
+      await expect(service.verifyEmail(7, { code: '123456' })).rejects.toThrow(
+        /expired/i,
+      );
     });
   });
 
@@ -338,15 +356,21 @@ describe('AuthService — password reset', () => {
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
 
       // The user update stores a bcrypt hash, never the plaintext
-      const userUpdateArg = prisma.user.update.mock.calls[0][0];
+      const userUpdateArg = callArg<{
+        where: { id: number };
+        data: { password: string };
+      }>(prisma.user.update);
       expect(userUpdateArg.where).toEqual({ id: 7 });
       expect(userUpdateArg.data.password).not.toBe('newpass123');
-      expect(await bcrypt.compare('newpass123', userUpdateArg.data.password)).toBe(
-        true,
-      );
+      expect(
+        await bcrypt.compare('newpass123', userUpdateArg.data.password),
+      ).toBe(true);
 
       // The token is marked used
-      const tokenUpdateArg = prisma.passwordResetToken.update.mock.calls[0][0];
+      const tokenUpdateArg = callArg<{
+        where: { id: number };
+        data: { usedAt: Date };
+      }>(prisma.passwordResetToken.update);
       expect(tokenUpdateArg.where).toEqual({ id: 42 });
       expect(tokenUpdateArg.data.usedAt).toBeInstanceOf(Date);
 
