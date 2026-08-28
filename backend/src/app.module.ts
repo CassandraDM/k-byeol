@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -14,6 +16,14 @@ import { ModerationModule } from './moderation/moderation.module';
 
 @Module({
   imports: [
+    // Baseline rate limit for every HTTP route. Endpoints that guard a
+    // guessable secret (login, 6-digit codes) tighten it with @Throttle().
+    // WebSocket frames are skipped: the guard reads an HTTP request/response
+    // pair that doesn't exist in a gateway context.
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
+      skipIf: (context) => context.getType() !== 'http',
+    }),
     ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
@@ -26,6 +36,6 @@ import { ModerationModule } from './moderation/moderation.module';
     ModerationModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

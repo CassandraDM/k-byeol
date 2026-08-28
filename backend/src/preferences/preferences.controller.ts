@@ -1,6 +1,15 @@
-import { Body, Controller, Get, Post, Put, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { PreferencesService } from './preferences.service';
 import { UpdatePreferencesDto } from './dto/update-preferences.dto';
+import { RequestGroupDto } from './dto/request-group.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { Request } from 'express';
 
@@ -16,10 +25,7 @@ export class PreferencesController {
   }
 
   @Put()
-  updatePreferences(
-    @Req() req: Request,
-    @Body() dto: UpdatePreferencesDto,
-  ) {
+  updatePreferences(@Req() req: Request, @Body() dto: UpdatePreferencesDto) {
     const user = req['user'] as { id: number };
     return this.preferencesService.updatePreferences(user.id, dto);
   }
@@ -30,11 +36,8 @@ export class PreferencesController {
   }
 
   @Post('/groups/request')
-  requestGroup(
-    @Req() req: Request,
-    @Body() body: { name: string },
-  ) {
+  requestGroup(@Req() req: Request, @Body() dto: RequestGroupDto) {
     const user = req['user'] as { id: number };
-    return this.preferencesService.requestGroup(user.id, body.name);
+    return this.preferencesService.requestGroup(user.id, dto.name);
   }
 }

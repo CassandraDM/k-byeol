@@ -13,6 +13,7 @@ import {
 import { ConversationsService } from './conversations.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { AddParticipantsDto } from './dto/add-participants.dto';
+import { GetMessagesDto } from './dto/get-messages.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { Request } from 'express';
 
@@ -44,10 +45,7 @@ export class ConversationsController {
   }
 
   @Post(':id/join')
-  joinCrew(
-    @Req() req: Request,
-    @Param('id', ParseIntPipe) id: number,
-  ) {
+  joinCrew(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
     const user = req['user'] as { id: number };
     return this.conversationsService.joinCrew(user.id, id);
   }
@@ -76,15 +74,14 @@ export class ConversationsController {
   getMessages(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
-    @Query('before') before?: string,
-    @Query('limit') limit?: string,
+    @Query() query: GetMessagesDto,
   ) {
     const user = req['user'] as { id: number };
     return this.conversationsService.getMessages(
       user.id,
       id,
-      before ? parseInt(before, 10) : undefined,
-      limit ? parseInt(limit, 10) : 20,
+      query.before,
+      query.limit ?? 20,
     );
   }
 }
