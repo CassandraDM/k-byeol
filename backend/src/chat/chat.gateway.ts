@@ -12,7 +12,12 @@ import { UsePipes, ValidationPipe } from '@nestjs/common';
 import { Server, Socket, DefaultEventsMap } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ChatService } from './chat.service';
-import { JoinConversationDto, SendMessageDto } from './dto/chat-events.dto';
+import { ConversationsService } from '../conversations/conversations.service';
+import {
+  DeleteMessageDto,
+  JoinConversationDto,
+  SendMessageDto,
+} from './dto/chat-events.dto';
 import type { AuthUser, JwtPayload } from '../auth/jwt-payload';
 
 /**
@@ -55,6 +60,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private readonly jwtService: JwtService,
     private readonly chatService: ChatService,
+    private readonly conversations: ConversationsService,
   ) {}
 
   async handleConnection(client: AuthedSocket) {
@@ -114,6 +120,41 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: JoinConversationDto,
   ) {
     void client.leave(`conversation:${data.conversationId}`);
+  }
+
+  /**
+   * Removes a message for everyone in the room.
+   *
+   * Deliberately on the socket rather than a REST route: messages arrive that
+   * way, so a deletion that did not would leave every other open thread
+   * showing something that no longer exists until the app was reloaded.
+   */
+  @SubscribeMessage('deleteMessage')
+  async handleDeleteMessage(
+    @ConnectedSocket() client: AuthedSocket,
+    @MessageBody() data: DeleteMessageDto,
+  ) {
+    const userId = client.data.user?.id;
+    if (!userId) return;
+
+    try {
+      const deleted = await this.conversations.deleteMessage(
+        userId,
+        data.conversationId,
+        data.messageId,
+      );
+      this.server
+        .to(`conversation:${data.conversationId}`)
+        .emit('messageDeleted', {
+          id: deleted.id,
+          conversationId: data.conversationId,
+          deletedAt: deleted.deletedAt,
+        });
+    } catch {
+      // The service already refuses anything not allowed; the client only
+      // needs to know it did not happen.
+      client.emit('error', { message: 'Could not delete that message' });
+    }
   }
 
   @SubscribeMessage('sendMessage')
