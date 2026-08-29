@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ModerationService } from '../moderation/moderation.service';
 import { FollowsService } from '../follows/follows.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ConversationsService } from '../conversations/conversations.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { Prisma } from '@prisma/client';
@@ -34,6 +35,7 @@ export class EventsService {
     private readonly moderation: ModerationService,
     private readonly follows: FollowsService,
     private readonly notifications: NotificationsService,
+    private readonly conversations: ConversationsService,
   ) {}
 
   async create(organizerId: number, dto: CreateEventDto) {
@@ -52,9 +54,29 @@ export class EventsService {
       },
     });
 
+    await this.openGroupChat(event.id);
     await this.announceToFollowers(organizerId, event);
 
     return event;
+  }
+
+  /**
+   * Opens the event's group chat with the organizer at the helm.
+   *
+   * Best-effort, like the follower announcement: the event is already saved by
+   * the time this runs, so throwing here would answer 500 for an event that
+   * exists. Joining the event creates the thread too, so a failure here is
+   * repaired by the first person who signs up.
+   */
+  private async openGroupChat(eventId: number): Promise<void> {
+    try {
+      await this.conversations.ensureEventConversation(eventId);
+    } catch (e) {
+      this.logger.error(
+        `Could not open the chat for event ${eventId}`,
+        e as Error,
+      );
+    }
   }
 
   /**
@@ -295,6 +317,17 @@ export class EventsService {
       data: { userId, eventId },
     });
 
+    // Joining the event puts you in its chat, read-only until the organizer
+    // says otherwise. Best-effort: participation is confirmed either way.
+    try {
+      await this.conversations.addEventParticipant(eventId, userId);
+    } catch (e) {
+      this.logger.error(
+        `Could not add user ${userId} to the chat for event ${eventId}`,
+        e as Error,
+      );
+    }
+
     return { message: 'Participation confirmed' };
   }
 
@@ -309,6 +342,16 @@ export class EventsService {
     await this.prisma.eventParticipation.delete({
       where: { userId_eventId: { userId, eventId } },
     });
+
+    // Leaving the event leaves its chat.
+    try {
+      await this.conversations.removeEventParticipant(eventId, userId);
+    } catch (e) {
+      this.logger.error(
+        `Could not remove user ${userId} from the chat for event ${eventId}`,
+        e as Error,
+      );
+    }
 
     return { message: 'Participation cancelled' };
   }

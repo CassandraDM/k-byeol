@@ -3,9 +3,12 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseIntPipe,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -14,6 +17,8 @@ import { ConversationsService } from './conversations.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { AddParticipantsDto } from './dto/add-participants.dto';
 import { GetMessagesDto } from './dto/get-messages.dto';
+import { SetRoleDto } from './dto/set-role.dto';
+import { MuteParticipantDto } from './dto/mute-participant.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { Request } from 'express';
 
@@ -50,24 +55,77 @@ export class ConversationsController {
     return this.conversationsService.joinCrew(user.id, id);
   }
 
-  @Post(':id/writers/:userId')
-  grantWriter(
+  /**
+   * Sets a participant's role. Replaces the old `writers` grant/revoke pair,
+   * which could only express two of the three assignable roles.
+   */
+  @Put(':id/participants/:userId/role')
+  setRole(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
     @Param('userId', ParseIntPipe) targetUserId: number,
+    @Body() dto: SetRoleDto,
   ) {
     const user = req['user'] as { id: number };
-    return this.conversationsService.grantWriter(user.id, id, targetUserId);
+    return this.conversationsService.setParticipantRole(
+      user.id,
+      id,
+      targetUserId,
+      dto.role,
+    );
   }
 
-  @Delete(':id/writers/:userId')
-  revokeWriter(
+  /**
+   * Silences somebody without changing their role. A body of `{ minutes }`
+   * times the mute; an empty body makes it permanent.
+   */
+  @Post(':id/participants/:userId/mute')
+  @HttpCode(HttpStatus.OK)
+  mute(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('userId', ParseIntPipe) targetUserId: number,
+    @Body() dto: MuteParticipantDto,
+  ) {
+    const user = req['user'] as { id: number };
+    return this.conversationsService.muteParticipant(
+      user.id,
+      id,
+      targetUserId,
+      dto.minutes,
+    );
+  }
+
+  @Delete(':id/participants/:userId/mute')
+  unmute(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
     @Param('userId', ParseIntPipe) targetUserId: number,
   ) {
     const user = req['user'] as { id: number };
-    return this.conversationsService.revokeWriter(user.id, id, targetUserId);
+    return this.conversationsService.unmuteParticipant(
+      user.id,
+      id,
+      targetUserId,
+    );
+  }
+
+  /**
+   * Removes somebody from an organizer-controlled thread. Chat only — their
+   * place at the event itself is untouched.
+   */
+  @Delete(':id/participants/:userId')
+  removeParticipant(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('userId', ParseIntPipe) targetUserId: number,
+  ) {
+    const user = req['user'] as { id: number };
+    return this.conversationsService.removeParticipant(
+      user.id,
+      id,
+      targetUserId,
+    );
   }
 
   @Get(':id/messages')

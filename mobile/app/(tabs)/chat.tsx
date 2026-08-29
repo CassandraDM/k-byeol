@@ -12,26 +12,13 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { CustomFonts, Palette } from '@/constants/theme';
-import { apiFetch } from '@/utils/api';
 import { useAuthStore } from '@/stores/auth-store';
-
-interface Participant {
-  id: number;
-  username: string;
-  avatar: string | null;
-  role: string;
-}
-
-interface Conversation {
-  id: number;
-  type: 'PRIVATE' | 'GROUP' | 'CREW';
-  name: string | null;
-  ownerId: number | null;
-  lastMessageText: string | null;
-  lastMessageAt: string | null;
-  createdAt: string;
-  participants: Participant[];
-}
+import {
+  conversationTitle,
+  fetchConversations,
+  isEventChat,
+  type Conversation,
+} from '@/utils/conversations';
 
 function formatRelative(dateStr: string | null): string {
   if (!dateStr) return '';
@@ -69,16 +56,10 @@ export default function ChatScreen() {
       if (!token) return;
       let cancelled = false;
       async function load() {
-        try {
-          const res = await apiFetch('/conversations');
-          if (res.ok) {
-            const data = await res.json();
-            if (!cancelled) setConversations(data);
-          }
-        } catch (e) {
-          console.error('[Chat] Failed to fetch:', e);
-        } finally {
-          if (!cancelled) setLoading(false);
+        const data = await fetchConversations();
+        if (!cancelled) {
+          if (data) setConversations(data);
+          setLoading(false);
         }
       }
       load();
@@ -95,8 +76,9 @@ export default function ChatScreen() {
         ? item.participants.find((p) => p.id !== currentUserId)
         : null;
 
-    const title = item.name ?? other?.username ?? 'Conversation';
+    const title = conversationTitle(item, currentUserId);
     const avatar = other?.avatar ?? null;
+    const eventChat = isEventChat(item);
 
     return (
       <Pressable
@@ -108,9 +90,20 @@ export default function ChatScreen() {
         {avatar ? (
           <Image source={{ uri: avatar }} style={styles.avatar} />
         ) : (
-          <View style={[styles.avatar, styles.avatarFallback]}>
+          <View
+            style={[
+              styles.avatar,
+              styles.avatarFallback,
+              eventChat && styles.avatarEvent,
+            ]}>
             <Ionicons
-              name={item.type === 'PRIVATE' ? 'person' : 'people'}
+              name={
+                eventChat
+                  ? 'calendar'
+                  : item.type === 'PRIVATE'
+                    ? 'person'
+                    : 'people'
+              }
               size={22}
               color="#fff"
             />
@@ -122,6 +115,13 @@ export default function ChatScreen() {
             <Text style={styles.conversationName} numberOfLines={1}>
               {title}
             </Text>
+            {/* An event thread sits in the same list as the direct ones, so it
+                needs something that says which is which at a glance. */}
+            {eventChat && (
+              <View style={styles.eventTag}>
+                <Text style={styles.eventTagText}>Event</Text>
+              </View>
+            )}
             <Text style={styles.conversationTime}>
               {formatRelative(item.lastMessageAt)}
             </Text>
@@ -237,6 +237,21 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
+  },
+  avatarEvent: {
+    backgroundColor: '#7A3FB0',
+  },
+  eventTag: {
+    paddingHorizontal: 7,
+    paddingVertical: 1,
+    borderRadius: 8,
+    backgroundColor: 'rgba(122, 63, 176, 0.15)',
+  },
+  eventTagText: {
+    fontFamily: CustomFonts.outfitMedium,
+    fontSize: 9,
+    letterSpacing: 0.3,
+    color: '#7A3FB0',
   },
   avatarFallback: {
     backgroundColor: Palette.purple,

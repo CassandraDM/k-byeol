@@ -7,5 +7,6 @@ import { ModerationModule } from '../moderation/moderation.module';
   imports: [ModerationModule],
   controllers: [ConversationsController],
   providers: [ConversationsService],
+  exports: [ConversationsService],
 })
 export class ConversationsModule {}

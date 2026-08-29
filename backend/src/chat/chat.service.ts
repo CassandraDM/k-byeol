@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ModerationService } from '../moderation/moderation.service';
+import { canWriteNow } from '../conversations/write-access';
 
 /** Push bodies get truncated so the notification stays readable. */
 const PREVIEW_MAX_LENGTH = 120;
@@ -47,11 +48,9 @@ export class ChatService {
       if (others.some((o) => hidden.includes(o.userId))) return false;
     }
 
-    // PRIVATE and GROUP: all participants can write
-    if (conversation.type !== 'CREW') return true;
-
-    // CREW: only OWNER and WRITER can write
-    return participant.role === 'OWNER' || participant.role === 'WRITER';
+    // Crews and event chats are organizer-controlled; everything else is
+    // open. A mute silences whoever it is on, whatever their role.
+    return canWriteNow(conversation, participant);
   }
 
   async saveMessage(senderId: number, conversationId: number, text: string) {

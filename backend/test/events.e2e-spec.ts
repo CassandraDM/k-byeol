@@ -52,8 +52,16 @@ describe('Events (e2e)', () => {
       update: jest.Mock;
       delete: jest.Mock;
     };
-    eventParticipation: { findMany: jest.Mock };
+    eventParticipation: {
+      findMany: jest.Mock;
+      findUnique: jest.Mock;
+      create: jest.Mock;
+    };
     block: { findMany: jest.Mock; findFirst: jest.Mock };
+    follow: { findMany: jest.Mock };
+    deviceToken: { findMany: jest.Mock };
+    conversation: { findUnique: jest.Mock; create: jest.Mock };
+    conversationParticipant: { findUnique: jest.Mock; create: jest.Mock };
   };
 
   /** Signs a token the real JwtAuthGuard will accept. */
@@ -76,10 +84,27 @@ describe('Events (e2e)', () => {
         update: jest.fn().mockResolvedValue(STORED_EVENT),
         delete: jest.fn().mockResolvedValue(STORED_EVENT),
       },
-      eventParticipation: { findMany: jest.fn().mockResolvedValue([]) },
+      eventParticipation: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({}),
+      },
       block: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(null),
+      },
+      // Creating an event now also announces it to followers and opens its
+      // group chat. Without these the suite passed only because both paths
+      // failed silently into their catch blocks.
+      follow: { findMany: jest.fn().mockResolvedValue([]) },
+      deviceToken: { findMany: jest.fn().mockResolvedValue([]) },
+      conversation: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 500 }),
+      },
+      conversationParticipant: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({}),
       },
     };
 
@@ -106,6 +131,8 @@ describe('Events (e2e)', () => {
   // the default fixture, and each test overrides what it needs with `Once`.
   beforeEach(() => {
     prisma.event.create.mockClear();
+    prisma.conversation.create.mockClear();
+    prisma.conversationParticipant.create.mockClear();
     prisma.event.update.mockClear();
     prisma.event.delete.mockClear();
     prisma.$queryRaw.mockClear();
@@ -299,6 +326,61 @@ describe('Events (e2e)', () => {
   });
 
   // ── Autorisation ────────────────────────────────────────────────────────
+
+  // ── Chat de groupe de l'événement ───────────────────────────────────────
+
+  describe('event group chat', () => {
+    it('opens the chat when the event is created, owned by the organiser', async () => {
+      await request(app.getHttpServer())
+        .post('/events')
+        .set('Authorization', `Bearer ${tokenFor(ORGANIZER)}`)
+        .send(creationBody())
+        .expect(201);
+
+      const arg = firstQuery(prisma.conversation.create) as {
+        data: Record<string, unknown>;
+      };
+      expect(arg.data).toMatchObject({
+        type: 'GROUP',
+        eventId: STORED_EVENT.id,
+        ownerId: ORGANIZER,
+        participants: { create: [{ userId: ORGANIZER, role: 'OWNER' }] },
+      });
+    });
+
+    it('adds a joiner to the chat, read-only', async () => {
+      prisma.conversation.findUnique.mockResolvedValue({ id: 500 });
+
+      await request(app.getHttpServer())
+        .post(`/events/${STORED_EVENT.id}/participate`)
+        .set('Authorization', `Bearer ${tokenFor(OTHER_USER)}`)
+        .expect(201);
+
+      expect(prisma.conversationParticipant.create).toHaveBeenCalledWith({
+        data: {
+          userId: OTHER_USER,
+          conversationId: 500,
+          role: 'MEMBER',
+        },
+      });
+
+      prisma.conversation.findUnique.mockResolvedValue(null);
+    });
+
+    it('still confirms participation when the chat cannot be reached', async () => {
+      // Best-effort by design: a chat failure must not cost someone their place.
+      prisma.conversation.findUnique.mockRejectedValueOnce(
+        new Error('connection lost'),
+      );
+
+      await request(app.getHttpServer())
+        .post(`/events/${STORED_EVENT.id}/participate`)
+        .set('Authorization', `Bearer ${tokenFor(OTHER_USER)}`)
+        .expect(201);
+
+      expect(prisma.eventParticipation.create).toHaveBeenCalled();
+    });
+  });
 
   describe('authorisation', () => {
     it('refuses event creation to an unverified account (403)', async () => {

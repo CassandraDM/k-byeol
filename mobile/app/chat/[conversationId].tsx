@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -16,11 +17,18 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { io, Socket } from 'socket.io-client';
 
+import { ChatMembersSheet } from '@/components/chat-members-sheet';
 import { ModerationMenu } from '@/components/moderation-menu';
 import { CustomFonts, Palette } from '@/constants/theme';
 import { API_URL } from '@/constants/api';
 import { apiFetch } from '@/utils/api';
 import { useAuthStore } from '@/stores/auth-store';
+import {
+  composerState,
+  conversationTitle,
+  fetchConversations,
+  type Conversation,
+} from '@/utils/conversations';
 
 interface Sender {
   id: number;
@@ -33,21 +41,9 @@ interface Message {
   conversationId: number;
   sender: Sender;
   text: string;
+  /** Set once the message has been removed — it stays as a tombstone. */
+  deletedAt?: string | null;
   createdAt: string;
-}
-
-interface Participant {
-  id: number;
-  username: string;
-  avatar: string | null;
-  role: string;
-}
-
-interface Conversation {
-  id: number;
-  type: 'PRIVATE' | 'GROUP' | 'CREW';
-  name: string | null;
-  participants: Participant[];
 }
 
 function formatTime(dateStr: string): string {
@@ -77,6 +73,16 @@ export default function ChatThreadScreen() {
   const socketRef = useRef<Socket | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
 
+  /**
+   * Re-reads the thread so role changes land straight away — the members sheet
+   * calls this after every grant, revoke or removal.
+   */
+  const refreshConversation = useCallback(async () => {
+    const all = await fetchConversations();
+    const conv = all?.find((c) => c.id === Number(conversationId));
+    if (conv) setConversation(conv);
+  }, [conversationId]);
+
   // Load conversation + messages
   useEffect(() => {
     if (!token || !conversationId) return;
@@ -84,16 +90,13 @@ export default function ChatThreadScreen() {
 
     async function load() {
       try {
-        const [convRes, msgRes] = await Promise.all([
-          apiFetch('/conversations'),
+        const [all, msgRes] = await Promise.all([
+          fetchConversations(),
           apiFetch(`/conversations/${conversationId}/messages?limit=50`),
         ]);
 
-        if (convRes.ok) {
-          const all = (await convRes.json()) as Conversation[];
-          const conv = all.find((c) => c.id === Number(conversationId));
-          if (conv && !cancelled) setConversation(conv);
-        }
+        const conv = all?.find((c) => c.id === Number(conversationId));
+        if (conv && !cancelled) setConversation(conv);
         if (msgRes.ok) {
           const msgs = (await msgRes.json()) as Message[];
           // API returns desc, we reverse to asc for chronological display
@@ -136,6 +139,19 @@ export default function ChatThreadScreen() {
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
     });
 
+    socket.on(
+      'messageDeleted',
+      (payload: { id: number; deletedAt: string }) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === payload.id
+              ? { ...m, text: '', deletedAt: payload.deletedAt }
+              : m,
+          ),
+        );
+      },
+    );
+
     socket.on('error', (err: { message: string }) => {
       console.warn('[Chat] Socket error:', err.message);
     });
@@ -171,20 +187,46 @@ export default function ChatThreadScreen() {
       ? (conversation.participants.find((p) => p.id !== currentUserId) ?? null)
       : null;
 
-  // Compute header title
-  const headerTitle = (() => {
-    if (!conversation) return 'Chat';
-    if (conversation.type === 'PRIVATE') {
-      const other = conversation.participants.find(
-        (p) => p.id !== currentUserId,
-      );
-      return other?.username ?? 'Chat';
-    }
-    return conversation.name ?? 'Group chat';
-  })();
+  const headerTitle = conversation
+    ? conversationTitle(conversation, currentUserId)
+    : 'Chat';
+
+  // Whether the composer is usable, and what to say in its place when it is
+  // not. Decided by the API so the client never re-derives the rule.
+  const composer = conversation
+    ? composerState(conversation)
+    : { enabled: false, notice: null };
+
+  /**
+   * Offers to remove a message. Authors can always take back their own words;
+   * deleting somebody else's needs moderation rights.
+   */
+  const offerDelete = (message: Message) => {
+    if (message.deletedAt) return;
+    const mine = message.sender.id === currentUserId;
+    if (!mine && !conversation?.canModerate) return;
+
+    Alert.alert(
+      mine ? 'Delete your message?' : `Delete ${message.sender.username}'s message?`,
+      'It will disappear for everyone in this chat.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () =>
+            socketRef.current?.emit('deleteMessage', {
+              conversationId: Number(conversationId),
+              messageId: message.id,
+            }),
+        },
+      ],
+    );
+  };
 
   const renderMessage = ({ item, index }: { item: Message; index: number }) => {
     const isMine = item.sender.id === currentUserId;
+    const deleted = Boolean(item.deletedAt);
     const prev = index > 0 ? messages[index - 1] : null;
     const showSender =
       !isMine && (!prev || prev.sender.id !== item.sender.id);
@@ -215,15 +257,26 @@ export default function ChatThreadScreen() {
                 ))}
             </View>
           )}
-          <View
+          <Pressable
+            onLongPress={() => offerDelete(item)}
+            delayLongPress={350}
+            disabled={deleted}
             style={[
               styles.bubble,
               isMine ? styles.bubbleMine : styles.bubbleOther,
+              deleted && styles.bubbleDeleted,
             ]}>
-            <Text style={[styles.bubbleText, isMine && styles.bubbleTextMine]}>
-              {item.text}
-            </Text>
-          </View>
+            {deleted ? (
+              // A tombstone rather than a gap: silently dropping the message
+              // would reshuffle the thread under whoever is reading it.
+              <Text style={styles.deletedText}>Message deleted</Text>
+            ) : (
+              <Text
+                style={[styles.bubbleText, isMine && styles.bubbleTextMine]}>
+                {item.text}
+              </Text>
+            )}
+          </Pressable>
         </View>
 
         <Text
@@ -260,7 +313,7 @@ export default function ChatThreadScreen() {
             {headerTitle}
           </Text>
           <View style={styles.iconSlot}>
-            {otherParticipant && (
+            {otherParticipant ? (
               <ModerationMenu
                 targetType="USER"
                 targetId={otherParticipant.id}
@@ -268,6 +321,16 @@ export default function ChatThreadScreen() {
                 canBlock
                 onBlocked={() => router.back()}
               />
+            ) : (
+              // Managing who can post is the owner's job, so only they get the
+              // control. The API refuses everyone else regardless.
+              (conversation?.canManage || conversation?.canModerate) && (
+                <ChatMembersSheet
+                  conversation={conversation}
+                  currentUserId={currentUserId}
+                  onChanged={refreshConversation}
+                />
+              )
             )}
           </View>
         </View>
@@ -284,27 +347,38 @@ export default function ChatThreadScreen() {
           }
         />
 
-        {/* Input */}
-        <View style={styles.inputBar}>
-          <TextInput
-            style={styles.input}
-            value={text}
-            onChangeText={setText}
-            placeholder="Type something..."
-            placeholderTextColor="rgba(207, 126, 242, 0.5)"
-            multiline
-          />
-          <Pressable
-            style={({ pressed }) => [
-              styles.sendButton,
-              pressed && styles.sendPressed,
-              !text.trim() && styles.sendDisabled,
-            ]}
-            onPress={handleSend}
-            disabled={!text.trim() || sending}>
-            <Ionicons name="send" size={18} color="#fff" />
-          </Pressable>
-        </View>
+        {/* Input — replaced by an explanation when the thread is read-only */}
+        {composer.enabled ? (
+          <View style={styles.inputBar}>
+            <TextInput
+              style={styles.input}
+              value={text}
+              onChangeText={setText}
+              placeholder="Type something..."
+              placeholderTextColor="rgba(207, 126, 242, 0.5)"
+              multiline
+            />
+            <Pressable
+              style={({ pressed }) => [
+                styles.sendButton,
+                pressed && styles.sendPressed,
+                !text.trim() && styles.sendDisabled,
+              ]}
+              onPress={handleSend}
+              disabled={!text.trim() || sending}>
+              <Ionicons name="send" size={18} color="#fff" />
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.readOnlyBar} accessibilityRole="summary">
+            <Ionicons
+              name="lock-closed-outline"
+              size={16}
+              color="rgba(207, 126, 242, 0.9)"
+            />
+            <Text style={styles.readOnlyText}>{composer.notice}</Text>
+          </View>
+        )}
       </KeyboardAvoidingView>
     </LinearGradient>
   );
@@ -312,6 +386,37 @@ export default function ChatThreadScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  bubbleDeleted: {
+    backgroundColor: 'rgba(207, 126, 242, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(207, 126, 242, 0.25)',
+  },
+  deletedText: {
+    fontFamily: CustomFonts.outfit,
+    fontSize: 13,
+    fontStyle: 'italic',
+    color: 'rgba(122, 63, 176, 0.65)',
+  },
+  readOnlyBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 12,
+    marginBottom: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 20,
+    backgroundColor: 'rgba(207, 126, 242, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(207, 126, 242, 0.3)',
+  },
+  readOnlyText: {
+    flex: 1,
+    fontFamily: CustomFonts.outfit,
+    fontSize: 12,
+    lineHeight: 17,
+    color: 'rgba(122, 63, 176, 0.95)',
+  },
   loader: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: {
     paddingTop: 60,
