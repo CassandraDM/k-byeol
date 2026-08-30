@@ -3,10 +3,11 @@ import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ModerationModule } from '../moderation/moderation.module';
-import { ConversationsModule } from '../conversations/conversations.module';
 
 @Module({
-  imports: [NotificationsModule, ModerationModule, ConversationsModule],
+  imports: [NotificationsModule, ModerationModule],
   providers: [ChatGateway, ChatService],
+  // The REST layer owns message writes and broadcasts through the gateway.
+  exports: [ChatGateway],
 })
 export class ChatModule {}

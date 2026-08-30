@@ -12,12 +12,7 @@ import { UsePipes, ValidationPipe } from '@nestjs/common';
 import { Server, Socket, DefaultEventsMap } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ChatService } from './chat.service';
-import { ConversationsService } from '../conversations/conversations.service';
-import {
-  DeleteMessageDto,
-  JoinConversationDto,
-  SendMessageDto,
-} from './dto/chat-events.dto';
+import { JoinConversationDto, SendMessageDto } from './dto/chat-events.dto';
 import type { AuthUser, JwtPayload } from '../auth/jwt-payload';
 
 /**
@@ -60,7 +55,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private readonly jwtService: JwtService,
     private readonly chatService: ChatService,
-    private readonly conversations: ConversationsService,
   ) {}
 
   async handleConnection(client: AuthedSocket) {
@@ -123,38 +117,43 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   /**
-   * Removes a message for everyone in the room.
+   * Tells everyone in a thread that a message changed.
    *
-   * Deliberately on the socket rather than a REST route: messages arrive that
-   * way, so a deletion that did not would leave every other open thread
-   * showing something that no longer exists until the app was reloaded.
+   * Called by the REST layer, which owns the write: the routes are the API,
+   * and this is only how the news reaches the people already looking at it.
    */
-  @SubscribeMessage('deleteMessage')
-  async handleDeleteMessage(
-    @ConnectedSocket() client: AuthedSocket,
-    @MessageBody() data: DeleteMessageDto,
-  ) {
-    const userId = client.data.user?.id;
-    if (!userId) return;
+  broadcastMessageEdited(
+    conversationId: number,
+    message: { id: number; text: string; editedAt: Date | null },
+  ): void {
+    this.server
+      .to(`conversation:${conversationId}`)
+      .emit('messageEdited', { ...message, conversationId });
+  }
 
-    try {
-      const deleted = await this.conversations.deleteMessage(
-        userId,
-        data.conversationId,
-        data.messageId,
-      );
-      this.server
-        .to(`conversation:${data.conversationId}`)
-        .emit('messageDeleted', {
-          id: deleted.id,
-          conversationId: data.conversationId,
-          deletedAt: deleted.deletedAt,
-        });
-    } catch {
-      // The service already refuses anything not allowed; the client only
-      // needs to know it did not happen.
-      client.emit('error', { message: 'Could not delete that message' });
-    }
+  /**
+   * Tells everyone in a thread that a deleted message is back.
+   *
+   * Carries the whole message: everyone dropped it when it went, so an id
+   * alone would leave them nothing to put back.
+   */
+  broadcastMessageRestored(
+    conversationId: number,
+    message: { id: number; text: string; createdAt: Date },
+  ): void {
+    this.server
+      .to(`conversation:${conversationId}`)
+      .emit('messageRestored', { ...message, conversationId });
+  }
+
+  /** Tells everyone in a thread that a message is gone. */
+  broadcastMessageDeleted(
+    conversationId: number,
+    message: { id: number; deletedAt: Date | null },
+  ): void {
+    this.server
+      .to(`conversation:${conversationId}`)
+      .emit('messageDeleted', { ...message, conversationId });
   }
 
   @SubscribeMessage('sendMessage')

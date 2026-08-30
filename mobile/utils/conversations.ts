@@ -281,6 +281,127 @@ async function write(
   }
 }
 
+/** One message as the thread renders it. */
+export interface ChatMessage {
+  id: number;
+  conversationId: number;
+  sender: { id: number; username: string; avatar: string | null };
+  text: string;
+  /** Set once the author rewrote it. */
+  editedAt?: string | null;
+  /** Set once it was removed — it stays as a tombstone. */
+  deletedAt?: string | null;
+  createdAt: string;
+}
+
+/**
+ * When a message was sent, written for the header of the long-press menu.
+ *
+ * Relative for the last two days, because "yesterday at 22:35" is how people
+ * actually place a message; absolute beyond that, where the day of the week
+ * stops being useful.
+ */
+export function formatMessageStamp(iso: string, now: Date = new Date()): string {
+  const sent = new Date(iso);
+  const time = sent.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const midnight = new Date(now);
+  midnight.setHours(0, 0, 0, 0);
+  const dayStart = midnight.getTime();
+  const sentAt = sent.getTime();
+
+  if (sentAt >= dayStart) return `Today at ${time}`;
+  if (sentAt >= dayStart - 86_400_000) return `Yesterday at ${time}`;
+
+  return `${sent.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+  })} at ${time}`;
+}
+
+/** What the long-press menu should offer for a message, in order. */
+export interface MessageActions {
+  canEdit: boolean;
+  canDelete: boolean;
+}
+
+/**
+ * Which of edit and delete to offer on a message.
+ *
+ * Editing is the author's alone — a moderator taking a message down is visible
+ * to everyone as a tombstone, but rewriting somebody else's words would leave
+ * no trace at all. Deleting follows the thread's moderation rights.
+ */
+export function messageActions(
+  message: Pick<ChatMessage, 'sender' | 'deletedAt'>,
+  currentUserId: number | null,
+  conversation: Pick<Conversation, 'canModerate'> | null,
+): MessageActions {
+  // A tombstone has nothing left to act on.
+  if (message.deletedAt) return { canEdit: false, canDelete: false };
+
+  const mine = currentUserId !== null && message.sender.id === currentUserId;
+  return {
+    canEdit: mine,
+    canDelete: mine || Boolean(conversation?.canModerate),
+  };
+}
+
+/** Rewrites a message. Returns the updated row, or null on failure. */
+export async function editMessage(
+  messageId: number,
+  text: string,
+): Promise<ChatMessage | null> {
+  try {
+    const res = await apiFetch(`/messages/${messageId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) {
+      console.error('[messages] Edit failed →', res.status);
+      return null;
+    }
+    return (await res.json()) as ChatMessage;
+  } catch (e) {
+    console.error('[messages] Edit error →', e);
+    return null;
+  }
+}
+
+/** Removes a message. */
+export async function deleteMessage(messageId: number): Promise<boolean> {
+  return write(`/messages/${messageId}`, 'DELETE');
+}
+
+/** Puts a deleted message back. Only whoever deleted it may. */
+export async function restoreMessage(messageId: number): Promise<boolean> {
+  return write(`/messages/${messageId}/restore`, 'POST');
+}
+
+/**
+ * Puts a message back where it belongs in a thread ordered oldest-first.
+ *
+ * A restored message is not simply appended: it was sent before whatever
+ * arrived while it was gone, and tacking it on the end would put a reply
+ * before the thing it answers.
+ */
+export function insertMessage<T extends { id: number; createdAt: string }>(
+  messages: T[],
+  message: T,
+): T[] {
+  if (messages.some((m) => m.id === message.id)) return messages;
+
+  const at = messages.findIndex(
+    (m) => new Date(m.createdAt).getTime() > new Date(message.createdAt).getTime(),
+  );
+  if (at === -1) return [...messages, message];
+  return [...messages.slice(0, at), message, ...messages.slice(at)];
+}
+
 /** The viewer's conversations. Null means the read failed. */
 export async function fetchConversations(): Promise<Conversation[] | null> {
   try {

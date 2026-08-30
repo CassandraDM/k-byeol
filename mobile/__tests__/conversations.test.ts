@@ -2,6 +2,12 @@ import {
   canActOn,
   canSetRoleOf,
   composerState,
+  deleteMessage,
+  editMessage,
+  formatMessageStamp,
+  insertMessage,
+  messageActions,
+  restoreMessage,
   conversationTitle,
   fetchConversations,
   isEventChat,
@@ -369,6 +375,167 @@ describe('management calls', () => {
   it('survives the network being down', async () => {
     mockedFetch.mockRejectedValueOnce(new Error('offline'));
     await expect(removeFromConversation(100, THEM)).resolves.toBe(false);
+  });
+});
+
+describe('messageActions', () => {
+  const from = (senderId: number, deletedAt: string | null = null) => ({
+    sender: { id: senderId, username: 'X', avatar: null },
+    deletedAt,
+  });
+
+  it('offers edit and delete on your own message', () => {
+    expect(messageActions(from(ME), ME, conversation())).toEqual({
+      canEdit: true,
+      canDelete: true,
+    });
+  });
+
+  it('offers nothing on somebody else’s message to a plain reader', () => {
+    expect(messageActions(from(THEM), ME, conversation())).toEqual({
+      canEdit: false,
+      canDelete: false,
+    });
+  });
+
+  it('lets a moderator delete but never edit somebody else’s', () => {
+    // Taking a message down leaves a tombstone; rewriting it would leave no
+    // trace that anything happened.
+    const asModerator = conversation({ canModerate: true });
+    expect(messageActions(from(THEM), ME, asModerator)).toEqual({
+      canEdit: false,
+      canDelete: true,
+    });
+  });
+
+  it('offers nothing on a tombstone', () => {
+    const deleted = from(ME, '2026-08-28T12:00:00.000Z');
+    expect(messageActions(deleted, ME, conversation({ canModerate: true }))).toEqual(
+      { canEdit: false, canDelete: false },
+    );
+  });
+
+  it('offers nothing when nobody is signed in', () => {
+    expect(messageActions(from(ME), null, null)).toEqual({
+      canEdit: false,
+      canDelete: false,
+    });
+  });
+});
+
+describe('insertMessage', () => {
+  const at = (id: number, createdAt: string) => ({ id, createdAt });
+  const thread = [
+    at(1, '2026-08-28T10:00:00.000Z'),
+    at(3, '2026-08-28T12:00:00.000Z'),
+  ];
+
+  it('puts a restored message back in send order', () => {
+    // Appending would put it after a reply that answers it.
+    const restored = at(2, '2026-08-28T11:00:00.000Z');
+    expect(insertMessage(thread, restored).map((m) => m.id)).toEqual([1, 2, 3]);
+  });
+
+  it('appends when nothing arrived after it', () => {
+    const restored = at(4, '2026-08-28T13:00:00.000Z');
+    expect(insertMessage(thread, restored).map((m) => m.id)).toEqual([1, 3, 4]);
+  });
+
+  it('puts the oldest back at the front', () => {
+    const restored = at(0, '2026-08-28T09:00:00.000Z');
+    expect(insertMessage(thread, restored).map((m) => m.id)).toEqual([0, 1, 3]);
+  });
+
+  it('ignores a message already in the thread', () => {
+    // The socket echo arrives alongside the caller's own update.
+    expect(insertMessage(thread, at(3, '2026-08-28T12:00:00.000Z'))).toBe(
+      thread,
+    );
+  });
+
+  it('does not mutate the thread it was given', () => {
+    insertMessage(thread, at(2, '2026-08-28T11:00:00.000Z'));
+    expect(thread.map((m) => m.id)).toEqual([1, 3]);
+  });
+});
+
+describe('formatMessageStamp', () => {
+  const NOW = new Date('2026-08-28T14:00:00');
+
+  it('says "Today" for a message sent earlier today', () => {
+    expect(formatMessageStamp('2026-08-28T09:05:00', NOW)).toBe(
+      'Today at 09:05',
+    );
+  });
+
+  it('says "Yesterday" for the day before', () => {
+    expect(formatMessageStamp('2026-08-27T22:35:00', NOW)).toBe(
+      'Yesterday at 22:35',
+    );
+  });
+
+  it('falls back to the date once the day stops being useful', () => {
+    expect(formatMessageStamp('2026-08-20T18:00:00', NOW)).toBe(
+      '20 Aug at 18:00',
+    );
+  });
+
+  it('counts days, not elapsed hours', () => {
+    // 23:59 last night is "yesterday", not "today", however recent it is.
+    const justAfterMidnight = new Date('2026-08-28T00:30:00');
+    expect(
+      formatMessageStamp('2026-08-27T23:59:00', justAfterMidnight),
+    ).toBe('Yesterday at 23:59');
+  });
+});
+
+describe('editMessage / deleteMessage', () => {
+  it('PATCHes the message text', async () => {
+    const body = { id: 900, text: 'rewritten' };
+    mockedFetch.mockResolvedValueOnce(respond(true, body));
+
+    await expect(editMessage(900, 'rewritten')).resolves.toEqual(body);
+    expect(mockedFetch).toHaveBeenCalledWith(
+      '/messages/900',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ text: 'rewritten' }),
+      }),
+    );
+  });
+
+  it('DELETEs by message id, with no conversation in the path', async () => {
+    mockedFetch.mockResolvedValueOnce(respond(true));
+
+    await expect(deleteMessage(900)).resolves.toBe(true);
+    expect(mockedFetch).toHaveBeenCalledWith('/messages/900', {
+      method: 'DELETE',
+    });
+  });
+
+  it('POSTs to restore a deleted message', async () => {
+    mockedFetch.mockResolvedValueOnce(respond(true));
+
+    await expect(restoreMessage(900)).resolves.toBe(true);
+    expect(mockedFetch).toHaveBeenCalledWith('/messages/900/restore', {
+      method: 'POST',
+    });
+  });
+
+  it('returns false when the undo window has been lost', async () => {
+    // The server refuses anyone but whoever deleted it.
+    mockedFetch.mockResolvedValueOnce(respond(false, {}, 403));
+    await expect(restoreMessage(900)).resolves.toBe(false);
+  });
+
+  it('returns null on a refused edit so the caller can say so', async () => {
+    mockedFetch.mockResolvedValueOnce(respond(false, {}, 403));
+    await expect(editMessage(900, 'rewritten')).resolves.toBeNull();
+  });
+
+  it('survives the network being down', async () => {
+    mockedFetch.mockRejectedValueOnce(new Error('offline'));
+    await expect(editMessage(900, 'rewritten')).resolves.toBeNull();
   });
 });
 
