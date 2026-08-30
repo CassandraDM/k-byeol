@@ -16,8 +16,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { io, Socket } from 'socket.io-client';
+import * as Haptics from 'expo-haptics';
 
 import { ChatMembersSheet } from '@/components/chat-members-sheet';
+import {
+  MessageActionsMenu,
+  type MessageAction,
+  type MessageRect,
+} from '@/components/message-actions-menu';
+import { UndoToast } from '@/components/undo-toast';
 import { ModerationMenu } from '@/components/moderation-menu';
 import { CustomFonts, Palette } from '@/constants/theme';
 import { API_URL } from '@/constants/api';
@@ -26,7 +33,13 @@ import { useAuthStore } from '@/stores/auth-store';
 import {
   composerState,
   conversationTitle,
+  deleteMessage,
+  editMessage,
   fetchConversations,
+  formatMessageStamp,
+  insertMessage,
+  messageActions,
+  restoreMessage,
   type Conversation,
 } from '@/utils/conversations';
 
@@ -41,6 +54,8 @@ interface Message {
   conversationId: number;
   sender: Sender;
   text: string;
+  /** Set once the author rewrote it. */
+  editedAt?: string | null;
   /** Set once the message has been removed — it stays as a tombstone. */
   deletedAt?: string | null;
   createdAt: string;
@@ -70,8 +85,19 @@ export default function ChatThreadScreen() {
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  /** The message being rewritten, if any — the composer doubles as its editor. */
+  const [editing, setEditing] = useState<Message | null>(null);
+  /** The long-pressed message and where the press landed, while its menu is up. */
+  const [menu, setMenu] = useState<{
+    message: Message;
+    rect: MessageRect;
+  } | null>(null);
+  /** The message just deleted, while its undo offer stands. */
+  const [undoable, setUndoable] = useState<Message | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
+  /** Each rendered bubble, so the long press can measure the one it hit. */
+  const bubbleRefs = useRef(new Map<number, View>());
 
   /**
    * Re-reads the thread so role changes land straight away — the members sheet
@@ -140,17 +166,27 @@ export default function ChatThreadScreen() {
     });
 
     socket.on(
-      'messageDeleted',
-      (payload: { id: number; deletedAt: string }) => {
+      'messageEdited',
+      (payload: { id: number; text: string; editedAt: string }) => {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === payload.id
-              ? { ...m, text: '', deletedAt: payload.deletedAt }
+              ? { ...m, text: payload.text, editedAt: payload.editedAt }
               : m,
           ),
         );
       },
     );
+
+    socket.on('messageDeleted', (payload: { id: number }) => {
+      setMessages((prev) => prev.filter((m) => m.id !== payload.id));
+    });
+
+    socket.on('messageRestored', (message: Message) => {
+      // Back where it was sent, not at the end — it predates whatever arrived
+      // while it was gone.
+      setMessages((prev) => insertMessage(prev, message));
+    });
 
     socket.on('error', (err: { message: string }) => {
       console.warn('[Chat] Socket error:', err.message);
@@ -164,21 +200,6 @@ export default function ChatThreadScreen() {
       socketRef.current = null;
     };
   }, [token, conversationId]);
-
-  const handleSend = () => {
-    const trimmed = text.trim();
-    if (!trimmed || sending) return;
-    const socket = socketRef.current;
-    if (!socket?.connected) return;
-
-    setSending(true);
-    socket.emit('sendMessage', {
-      conversationId: Number(conversationId),
-      text: trimmed,
-    });
-    setText('');
-    setSending(false);
-  };
 
   // In a 1-on-1 the other participant is the block target. Group and crew
   // threads have no single "them", so moderation happens from each profile.
@@ -197,36 +218,147 @@ export default function ChatThreadScreen() {
     ? composerState(conversation)
     : { enabled: false, notice: null };
 
-  /**
-   * Offers to remove a message. Authors can always take back their own words;
-   * deleting somebody else's needs moderation rights.
-   */
-  const offerDelete = (message: Message) => {
-    if (message.deletedAt) return;
-    const mine = message.sender.id === currentUserId;
-    if (!mine && !conversation?.canModerate) return;
+  const handleSend = () => {
+    const trimmed = text.trim();
+    if (!trimmed || sending) return;
 
-    Alert.alert(
-      mine ? 'Delete your message?' : `Delete ${message.sender.username}'s message?`,
-      'It will disappear for everyone in this chat.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () =>
-            socketRef.current?.emit('deleteMessage', {
-              conversationId: Number(conversationId),
-              messageId: message.id,
-            }),
-        },
-      ],
-    );
+    // The composer doubles as the editor: while a message is being rewritten,
+    // sending saves it instead of posting a new one.
+    if (editing) {
+      void saveEdit(editing, trimmed);
+      return;
+    }
+
+    const socket = socketRef.current;
+    if (!socket?.connected) return;
+
+    setSending(true);
+    socket.emit('sendMessage', {
+      conversationId: Number(conversationId),
+      text: trimmed,
+    });
+    setText('');
+    setSending(false);
   };
+
+  const saveEdit = async (message: Message, next: string) => {
+    if (next === message.text) {
+      cancelEdit();
+      return;
+    }
+    setSending(true);
+    const updated = await editMessage(message.id, next);
+    setSending(false);
+
+    if (!updated) {
+      Alert.alert('Not saved', 'Could not edit that message. Try again.');
+      return;
+    }
+    // The socket tells everyone else; this keeps the author's own screen from
+    // waiting on the round trip.
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === message.id
+          ? { ...m, text: updated.text, editedAt: updated.editedAt }
+          : m,
+      ),
+    );
+    cancelEdit();
+  };
+
+  const startEdit = (message: Message) => {
+    setEditing(message);
+    setText(message.text);
+  };
+
+  const cancelEdit = () => {
+    setEditing(null);
+    setText('');
+  };
+
+  /**
+   * Deletes straight away and offers a few seconds to take it back.
+   *
+   * No confirmation dialog: the undo is the safety net, and asking twice for
+   * something instantly reversible is friction for nothing. The message leaves
+   * the thread immediately so the deletion looks like it happened.
+   */
+  const handleDelete = async (message: Message) => {
+    if (editing?.id === message.id) cancelEdit();
+
+    setMessages((prev) => prev.filter((m) => m.id !== message.id));
+    setUndoable(message);
+
+    const ok = await deleteMessage(message.id);
+    if (!ok) {
+      // It never went: put it back and say so, rather than leaving a thread
+      // that disagrees with the server.
+      setUndoable(null);
+      setMessages((prev) => insertMessage(prev, message));
+      Alert.alert('Not deleted', 'Could not delete that message. Try again.');
+    }
+  };
+
+  const handleUndo = async () => {
+    const message = undoable;
+    setUndoable(null);
+    if (!message) return;
+
+    const ok = await restoreMessage(message.id);
+    if (ok) {
+      setMessages((prev) => insertMessage(prev, message));
+    } else {
+      Alert.alert('Not restored', 'Could not bring that message back.');
+    }
+  };
+
+  /**
+   * Opens the long-press menu, anchored where the finger landed.
+   *
+   * Nothing opens on a message this person cannot act on — an empty menu is
+   * worse than no menu, and a tombstone has nothing left to offer.
+   */
+  const openMenu = (message: Message, rect: MessageRect) => {
+    const allowed = messageActions(message, currentUserId, conversation);
+    if (!allowed.canEdit && !allowed.canDelete) return;
+
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setMenu({ message, rect });
+  };
+
+  /** What the open menu offers, built from what this person may do. */
+  const menuActions = ((): MessageAction[] => {
+    if (!menu) return [];
+    const allowed = messageActions(menu.message, currentUserId, conversation);
+    const message = menu.message;
+
+    return [
+      ...(allowed.canEdit
+        ? [
+            {
+              key: 'edit',
+              label: 'Edit',
+              icon: 'pencil-outline' as const,
+              onPress: () => startEdit(message),
+            },
+          ]
+        : []),
+      ...(allowed.canDelete
+        ? [
+            {
+              key: 'delete',
+              label: 'Delete',
+              icon: 'trash-outline' as const,
+              destructive: true,
+              onPress: () => void handleDelete(message),
+            },
+          ]
+        : []),
+    ];
+  })();
 
   const renderMessage = ({ item, index }: { item: Message; index: number }) => {
     const isMine = item.sender.id === currentUserId;
-    const deleted = Boolean(item.deletedAt);
     const prev = index > 0 ? messages[index - 1] : null;
     const showSender =
       !isMine && (!prev || prev.sender.id !== item.sender.id);
@@ -258,24 +390,25 @@ export default function ChatThreadScreen() {
             </View>
           )}
           <Pressable
-            onLongPress={() => offerDelete(item)}
+            ref={(node) => {
+              if (node) bubbleRefs.current.set(item.id, node);
+              else bubbleRefs.current.delete(item.id);
+            }}
+            onLongPress={() => {
+              bubbleRefs.current
+                .get(item.id)
+                ?.measureInWindow((x, y, width, height) =>
+                  openMenu(item, { x, y, width, height }),
+                );
+            }}
             delayLongPress={350}
-            disabled={deleted}
             style={[
               styles.bubble,
               isMine ? styles.bubbleMine : styles.bubbleOther,
-              deleted && styles.bubbleDeleted,
             ]}>
-            {deleted ? (
-              // A tombstone rather than a gap: silently dropping the message
-              // would reshuffle the thread under whoever is reading it.
-              <Text style={styles.deletedText}>Message deleted</Text>
-            ) : (
-              <Text
-                style={[styles.bubbleText, isMine && styles.bubbleTextMine]}>
-                {item.text}
-              </Text>
-            )}
+            <Text style={[styles.bubbleText, isMine && styles.bubbleTextMine]}>
+              {item.text}
+            </Text>
           </Pressable>
         </View>
 
@@ -285,6 +418,7 @@ export default function ChatThreadScreen() {
             isMine ? styles.timestampMine : styles.timestampOther,
           ]}>
           {formatTime(item.createdAt)}
+          {item.editedAt && <Text style={styles.editedLabel}> · edited</Text>}
         </Text>
       </View>
     );
@@ -347,28 +481,58 @@ export default function ChatThreadScreen() {
           }
         />
 
+        <UndoToast
+          message={undoable ? 'Message deleted' : null}
+          onUndo={() => void handleUndo()}
+          onDismiss={() => setUndoable(null)}
+        />
+
         {/* Input — replaced by an explanation when the thread is read-only */}
         {composer.enabled ? (
-          <View style={styles.inputBar}>
-            <TextInput
-              style={styles.input}
-              value={text}
-              onChangeText={setText}
-              placeholder="Type something..."
-              placeholderTextColor="rgba(207, 126, 242, 0.5)"
-              multiline
-            />
-            <Pressable
-              style={({ pressed }) => [
-                styles.sendButton,
-                pressed && styles.sendPressed,
-                !text.trim() && styles.sendDisabled,
-              ]}
-              onPress={handleSend}
-              disabled={!text.trim() || sending}>
-              <Ionicons name="send" size={18} color="#fff" />
-            </Pressable>
-          </View>
+          <>
+            {/* Says which message is being rewritten, and how to back out. */}
+            {editing && (
+              <View style={styles.editingBanner}>
+                <Ionicons
+                  name="pencil"
+                  size={14}
+                  color={Palette.purple}
+                />
+                <Text style={styles.editingText} numberOfLines={1}>
+                  Editing your message
+                </Text>
+                <Pressable onPress={cancelEdit} hitSlop={8}>
+                  <Text style={styles.editingCancel}>Cancel</Text>
+                </Pressable>
+              </View>
+            )}
+            <View style={styles.inputBar}>
+              <TextInput
+                style={styles.input}
+                value={text}
+                onChangeText={setText}
+                placeholder={
+                  editing ? 'Rewrite your message...' : 'Type something...'
+                }
+                placeholderTextColor="rgba(207, 126, 242, 0.5)"
+                multiline
+              />
+              <Pressable
+                style={({ pressed }) => [
+                  styles.sendButton,
+                  pressed && styles.sendPressed,
+                  !text.trim() && styles.sendDisabled,
+                ]}
+                onPress={handleSend}
+                disabled={!text.trim() || sending}>
+                <Ionicons
+                  name={editing ? 'checkmark' : 'send'}
+                  size={18}
+                  color="#fff"
+                />
+              </Pressable>
+            </View>
+          </>
         ) : (
           <View style={styles.readOnlyBar} accessibilityRole="summary">
             <Ionicons
@@ -380,22 +544,68 @@ export default function ChatThreadScreen() {
           </View>
         )}
       </KeyboardAvoidingView>
+
+      <MessageActionsMenu
+        anchor={menu?.rect ?? null}
+        align={menu?.message.sender.id === currentUserId ? 'right' : 'left'}
+        highlight={
+          menu && (
+            <View
+              style={[
+                styles.bubble,
+                menu.message.sender.id === currentUserId
+                  ? styles.bubbleMine
+                  : styles.bubbleOther,
+              ]}>
+              <Text
+                style={[
+                  styles.bubbleText,
+                  menu.message.sender.id === currentUserId &&
+                    styles.bubbleTextMine,
+                ]}>
+                {menu.message.text}
+              </Text>
+            </View>
+          )
+        }
+        timestamp={
+          menu ? formatMessageStamp(menu.message.createdAt) : undefined
+        }
+        actions={menuActions}
+        onClose={() => setMenu(null)}
+      />
     </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  bubbleDeleted: {
-    backgroundColor: 'rgba(207, 126, 242, 0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(207, 126, 242, 0.25)',
-  },
-  deletedText: {
+  editedLabel: {
     fontFamily: CustomFonts.outfit,
-    fontSize: 13,
+    fontSize: 10,
     fontStyle: 'italic',
-    color: 'rgba(122, 63, 176, 0.65)',
+  },
+  editingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 12,
+    marginBottom: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: 'rgba(207, 126, 242, 0.14)',
+  },
+  editingText: {
+    flex: 1,
+    fontFamily: CustomFonts.outfit,
+    fontSize: 12,
+    color: Palette.purple,
+  },
+  editingCancel: {
+    fontFamily: CustomFonts.syongsyong,
+    fontSize: 14,
+    color: Palette.purple,
   },
   readOnlyBar: {
     flexDirection: 'row',

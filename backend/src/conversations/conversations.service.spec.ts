@@ -26,7 +26,6 @@ describe('ConversationsService — event group chats', () => {
   let prisma: {
     event: { findUnique: jest.Mock };
     conversation: { findUnique: jest.Mock; create: jest.Mock };
-    message: { findUnique: jest.Mock; update: jest.Mock };
     eventParticipation: { findMany: jest.Mock };
     conversationParticipant: {
       findUnique: jest.Mock;
@@ -49,10 +48,6 @@ describe('ConversationsService — event group chats', () => {
       conversation: {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: CONVERSATION_ID }),
-      },
-      message: {
-        findUnique: jest.fn().mockResolvedValue(null),
-        update: jest.fn().mockResolvedValue({}),
       },
       // No one signed up yet unless a test says otherwise.
       eventParticipation: { findMany: jest.fn().mockResolvedValue([]) },
@@ -443,92 +438,6 @@ describe('ConversationsService — event group chats', () => {
           service.removeParticipant(ORGANIZER, CONVERSATION_ID, PARTICIPANT),
         ).rejects.toThrow(ForbiddenException);
         expect(prisma.conversationParticipant.delete).not.toHaveBeenCalled();
-      });
-    });
-
-    describe('deleteMessage', () => {
-      const MESSAGE_ID = 900;
-
-      const messageFrom = (senderId: number, deletedAt: Date | null = null) => {
-        prisma.message.findUnique.mockResolvedValueOnce({
-          id: MESSAGE_ID,
-          conversationId: CONVERSATION_ID,
-          senderId,
-          deletedAt,
-        });
-      };
-
-      it('lets an author take back their own message', async () => {
-        prisma.conversationParticipant.findUnique.mockResolvedValueOnce({
-          userId: PARTICIPANT,
-          role: 'MEMBER',
-        });
-        messageFrom(PARTICIPANT);
-
-        await service.deleteMessage(PARTICIPANT, CONVERSATION_ID, MESSAGE_ID);
-
-        const [arg] = prisma.message.update.mock.calls[0] as [
-          { data: { deletedAt: Date; deletedById: number } },
-        ];
-        expect(arg.data.deletedById).toBe(PARTICIPANT);
-        expect(arg.data.deletedAt).toBeInstanceOf(Date);
-      });
-
-      it("lets a moderator delete somebody else's message", async () => {
-        prisma.conversationParticipant.findUnique.mockResolvedValueOnce({
-          userId: ORGANIZER,
-          role: 'MODERATOR',
-        });
-        messageFrom(PARTICIPANT);
-
-        await service.deleteMessage(ORGANIZER, CONVERSATION_ID, MESSAGE_ID);
-
-        expect(prisma.message.update).toHaveBeenCalled();
-      });
-
-      it("refuses a plain participant deleting somebody else's message", async () => {
-        prisma.conversationParticipant.findUnique.mockResolvedValueOnce({
-          userId: PARTICIPANT,
-          role: 'MEMBER',
-        });
-        messageFrom(ORGANIZER);
-
-        await expect(
-          service.deleteMessage(PARTICIPANT, CONVERSATION_ID, MESSAGE_ID),
-        ).rejects.toThrow(ForbiddenException);
-        expect(prisma.message.update).not.toHaveBeenCalled();
-      });
-
-      it('refuses a message belonging to another conversation', async () => {
-        prisma.conversationParticipant.findUnique.mockResolvedValueOnce({
-          userId: ORGANIZER,
-          role: 'OWNER',
-        });
-        prisma.message.findUnique.mockResolvedValueOnce({
-          id: MESSAGE_ID,
-          conversationId: CONVERSATION_ID + 1,
-          senderId: PARTICIPANT,
-          deletedAt: null,
-        });
-
-        await expect(
-          service.deleteMessage(ORGANIZER, CONVERSATION_ID, MESSAGE_ID),
-        ).rejects.toThrow(NotFoundException);
-      });
-
-      it('reports success for an already-deleted message', async () => {
-        // Two moderators racing on the same message should both see it done.
-        const already = new Date('2026-08-28T10:00:00.000Z');
-        prisma.conversationParticipant.findUnique.mockResolvedValueOnce({
-          userId: ORGANIZER,
-          role: 'OWNER',
-        });
-        messageFrom(PARTICIPANT, already);
-
-        await expect(
-          service.deleteMessage(ORGANIZER, CONVERSATION_ID, MESSAGE_ID),
-        ).resolves.toMatchObject({ deletedAt: already });
-        expect(prisma.message.update).not.toHaveBeenCalled();
       });
     });
 

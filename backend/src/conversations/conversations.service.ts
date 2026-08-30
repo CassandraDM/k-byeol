@@ -8,7 +8,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ModerationService } from '../moderation/moderation.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import {
-  canDeleteMessage,
   canManageNow,
   canModerateNow,
   canWriteNow,
@@ -148,6 +147,9 @@ export class ConversationsService {
     const messages = await this.prisma.message.findMany({
       where: {
         conversationId,
+        // A deleted message leaves the thread rather than sitting in it as a
+        // tombstone, so its text never leaves the server again.
+        deletedAt: null,
         senderId: { notIn: hidden },
         ...(before ? { id: { lt: before } } : {}),
       },
@@ -158,14 +160,12 @@ export class ConversationsService {
       },
     });
 
-    // A deleted message keeps its place as a tombstone: silently dropping it
-    // would reshuffle the thread under anyone reading it.
     return messages.map((m) => ({
       id: m.id,
       conversationId: m.conversationId,
       sender: m.sender,
-      text: m.deletedAt ? '' : m.text,
-      deletedAt: m.deletedAt,
+      text: m.text,
+      editedAt: m.editedAt,
       createdAt: m.createdAt,
     }));
   }
@@ -365,62 +365,6 @@ export class ConversationsService {
     });
 
     return updated;
-  }
-
-  /**
-   * Removes a message. Authors can always take back their own words; deleting
-   * somebody else's is a moderation act.
-   *
-   * Soft: the row stays so the audit trail does, and the reader is left with a
-   * tombstone rather than a silently reshuffled conversation.
-   */
-  async deleteMessage(
-    actorId: number,
-    conversationId: number,
-    messageId: number,
-  ) {
-    const conversation = await this.prisma.conversation.findUnique({
-      where: { id: conversationId },
-    });
-    if (!conversation) throw new NotFoundException('Conversation not found');
-
-    const actor = await this.assertParticipant(conversationId, actorId);
-    const message = await this.prisma.message.findUnique({
-      where: { id: messageId },
-      select: {
-        id: true,
-        conversationId: true,
-        senderId: true,
-        deletedAt: true,
-      },
-    });
-    if (!message || message.conversationId !== conversationId) {
-      throw new NotFoundException('Message not found');
-    }
-
-    if (
-      !canDeleteMessage(
-        conversation,
-        { userId: actorId, role: effectiveRole(actor) },
-        message,
-      )
-    ) {
-      throw new ForbiddenException('You cannot delete this message');
-    }
-
-    // Already gone: report success rather than 404, so two moderators racing
-    // on the same message both see it done.
-    if (message.deletedAt) {
-      return { id: message.id, deletedAt: message.deletedAt };
-    }
-
-    const deleted = await this.prisma.message.update({
-      where: { id: messageId },
-      data: { deletedAt: new Date(), deletedById: actorId },
-      select: { id: true, conversationId: true, deletedAt: true },
-    });
-
-    return deleted;
   }
 
   /**

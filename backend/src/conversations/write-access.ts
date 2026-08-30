@@ -216,6 +216,22 @@ export function refuseRoleChange(
 }
 
 /**
+ * Whether `actor` may rewrite `message`.
+ *
+ * Authors only — no role grants this. A moderator can take a message down,
+ * which is visible to everyone as a tombstone, but putting different words in
+ * somebody else's mouth is not moderation, and nothing in the thread would
+ * show that it had happened.
+ */
+export function canEditMessage(
+  actorId: number,
+  message: { senderId: number; deletedAt: Date | null },
+): boolean {
+  if (message.deletedAt !== null) return false;
+  return actorId === message.senderId;
+}
+
+/**
  * Whether `actor` may delete `message`.
  *
  * People can always take back their own words, muted or not — being silenced

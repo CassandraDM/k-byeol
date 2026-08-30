@@ -299,6 +299,9 @@ model Message {
   conversationId Int       @map("conversation_id")
   senderId       Int       @map("sender_id")
   text           String
+  /// Set the first time the author rewrites the message, so the thread can
+  /// show that what is on screen is not what was originally sent.
+  editedAt       DateTime? @map("edited_at")
   /// Soft delete: the row survives moderation so the audit trail does, while
   /// the text stops being served. NULL means the message is live.
   deletedAt      DateTime? @map("deleted_at")

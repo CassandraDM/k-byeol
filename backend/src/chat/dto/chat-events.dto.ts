@@ -19,11 +19,3 @@ export class SendMessageDto {
   @MaxLength(2000)
   text!: string;
 }
-
-export class DeleteMessageDto {
-  @IsInt()
-  conversationId!: number;
-
-  @IsInt()
-  messageId!: number;
-}
