@@ -1,5 +1,6 @@
 import { INestApplication, Logger } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import basicAuth from 'express-basic-auth';
 
 const logger = new Logger('Swagger');
 
@@ -7,30 +8,72 @@ const logger = new Logger('Swagger');
 const DOCS_PATH = 'api-docs';
 
 /**
- * Mounts the OpenAPI document and its UI — in development only.
+ * Who may read the documentation.
  *
  * A spec is a complete map of every route, parameter and error shape. It grants
  * no access on its own, but it removes all the guesswork, and #63 was about not
- * handing out what the API does not need to give away. Issue #77 asks for it
- * behind a credential in production; until that gate actually works, not
- * serving it there at all is the honest version of the same decision — a gate
- * that silently lets everyone through would be worse than this.
+ * handing out what the API does not need to give away — so in production it
+ * sits behind a credential.
  *
- * The attempt is worth recording, because the obvious fixes are the ones that
- * fail: basic-auth middleware never runs against these routes, whether it is
- * registered through `app.use()` (with or without a path) or straight onto the
- * Express instance, and whether it is registered before or after
- * `SwaggerModule.setup`. It is demonstrably installed — helmet, registered by
- * the same call on the same line of the boot sequence, applies its headers to
- * every response — and SwaggerModule still answers first.
+ * With no credential configured the answer differs by environment on purpose:
+ * development wants the docs one click away, production fails closed and serves
+ * nothing, the same posture JWT_SECRET and DATABASE_CA_CERT already take.
  */
+function credentials():
+  | { user: string; password: string }
+  | 'open'
+  | 'disabled' {
+  const user = process.env.SWAGGER_USER;
+  const password = process.env.SWAGGER_PASSWORD;
+
+  if (user && password) return { user, password };
+  return process.env.NODE_ENV === 'production' ? 'disabled' : 'open';
+}
+
+/**
+ * Mounts the OpenAPI document and its UI — in development only.
+ *
+ * Guarded rather than public: a spec is a complete map of every route,
+ * parameter and error shape, and #63 was about not handing out what the API
+ * does not need to give away.
+ */
+export function swaggerDocsGuard() {
+  const access = credentials();
+  if (access === 'open' || access === 'disabled') return null;
+
+  return basicAuth({
+    users: { [access.user]: access.password },
+    challenge: true,
+    // ASCII only: the realm is echoed in a WWW-Authenticate header, and header
+    // values are latin-1. The 별 in the app's name throws ERR_INVALID_CHAR
+    // there, which turns every refusal into a 500.
+    realm: 'K-byeol API documentation',
+  });
+}
+
+/** Every path SwaggerModule answers on, including what it serves beneath. */
+export const SWAGGER_PATHS = [
+  `/${DOCS_PATH}`,
+  `/${DOCS_PATH}/*splat`,
+  `/${DOCS_PATH}-json`,
+  `/${DOCS_PATH}-yaml`,
+];
+
 export function setupSwagger(app: INestApplication): void {
-  if (process.env.NODE_ENV === 'production') {
-    logger.log(
-      'API documentation is not served in production (see #77 — it needs a ' +
-        'credential first).',
+  const access = credentials();
+
+  if (access === 'disabled') {
+    logger.warn(
+      'API documentation is not being served: set SWAGGER_USER and ' +
+        'SWAGGER_PASSWORD to publish it behind a credential.',
     );
     return;
+  }
+
+  if (access === 'open') {
+    logger.warn(
+      `API documentation is open at /${DOCS_PATH} (development only).`,
+    );
   }
 
   const config = new DocumentBuilder()

@@ -3,7 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
-import { setupSwagger } from './swagger';
+import { setupSwagger, swaggerDocsGuard, SWAGGER_PATHS } from './swagger';
 
 /**
  * Browser origins allowed to call the API. Native builds aren't subject to
@@ -31,6 +31,14 @@ async function bootstrap() {
   // is off: the API only ever returns JSON, and the default CSP would just add
   // headers no client reads.
   app.use(helmet({ contentSecurityPolicy: false }));
+
+  // Registered here, next to helmet, rather than beside the routes it guards:
+  // middleware added later in the boot sequence never gets to run against
+  // them, because SwaggerModule has already bound a handler that answers first.
+  const docsGuard = swaggerDocsGuard();
+  if (docsGuard) {
+    for (const path of SWAGGER_PATHS) app.use(path, docsGuard);
+  }
 
   app.enableCors({ origin: corsOrigins(), credentials: true });
 
