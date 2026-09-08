@@ -61,6 +61,56 @@ See [`.env.example`](.env.example) for all required variables.
 | 401 | Wrong credentials |
 | 409 | Email or username already in use |
 
+### Account
+
+Both routes act on the caller and take no id — there is no number in the path
+to point at somebody else's account.
+
+| Method | Route | Description | Body |
+|---|---|---|---|
+| DELETE | `/me` | Delete the current account | `{ password }`, or `{ accessToken }` for a Google / Apple account |
+| GET | `/me/export` | Everything the account holds, as a JSON attachment | — |
+
+Which proof `DELETE /me` accepts follows from the account, not from what the
+caller sends: a social account holds a random password minted at signup that
+its owner has never seen, so it re-authenticates with its provider instead.
+
+#### What deletion does
+
+The row survives and its identity is emptied. Dropping it is not an option:
+`messages.sender_id` is not nullable, so destroying the account would take
+every message it ever sent with it and punch holes in conversations belonging
+to other people.
+
+| | |
+|---|---|
+| Deleted outright | organised events (and their group chats), participations, conversation memberships, preferences, follows, blocks, devices, pending tokens |
+| Emptied | email, username, avatar, bio — the originals move to `restore_email` / `restore_username` |
+| Kept | messages, whose author is now nobody; reports the account filed, which are about somebody else's behaviour |
+
+The email is freed in the same transaction, so **the same address can open a
+new account the very next minute**. Signing in is refused from that moment: the
+address no longer resolves to the row, `AuthService.login` rules out a deleted
+account explicitly, and `JwtAuthGuard` rejects tokens belonging to one — which
+matters, because tokens live seven days and there is no revocation list.
+
+#### Grace period
+
+Thirty days (`GRACE_PERIOD_DAYS` in `account.service.ts`). Nothing the user can
+see changes during it — their identity left the moment they confirmed. What the
+window holds open is the possibility of putting the account back, and a bounded
+period in which a report filed against it can still be acted on.
+
+`AccountPurgeService` closes it nightly: the two restore columns are cleared
+and the password hash is replaced with one nobody holds the input to, so the
+row can never become a way in again.
+
+Restoring inside the window means moving `restore_email` / `restore_username`
+back and clearing `deleted_at`. There is no endpoint for it — there is no
+back-office yet — so it is a support operation against the database, and it
+only works if the address has not been claimed by a new account in the
+meantime.
+
 ## Scripts
 
 | Script | Description |

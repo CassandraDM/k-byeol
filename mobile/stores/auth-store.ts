@@ -1,10 +1,9 @@
 import { create } from "zustand";
-import { Platform } from "react-native";
-import * as WebBrowser from "expo-web-browser";
-import * as Linking from "expo-linking";
-import * as AppleAuthentication from "expo-apple-authentication";
 import { API_URL } from "@/constants/api";
-import { getSupabase } from "@/constants/supabase";
+import {
+  releaseSupabaseSession,
+  requestSupabaseAccessToken,
+} from "@/utils/social-auth";
 import { getItem, setItem, deleteItem } from "@/utils/storage";
 import {
   registerPushToken,
@@ -37,6 +36,7 @@ const ONBOARDING_KEY = "kbyeol_onboarding_done";
 const EMAIL_VERIFIED_KEY = "kbyeol_email_verified";
 const USERNAME_KEY = "kbyeol_username";
 const EMAIL_KEY = "kbyeol_email";
+const PROVIDER_KEY = "kbyeol_provider";
 
 interface AuthState {
   token: string | null;
@@ -46,6 +46,12 @@ interface AuthState {
   emailVerified: boolean;
   username: string | null;
   email: string | null;
+  /**
+   * How this account authenticates: "email", "google" or "apple". The settings
+   * screen reads it to decide what proof deleting the account should ask for —
+   * a social account has no password its owner has ever seen.
+   */
+  provider: string | null;
   isLoading: boolean;
   error: string | null;
   hydrate: () => Promise<void>;
@@ -70,6 +76,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   emailVerified: false,
   username: null,
   email: null,
+  provider: null,
   isLoading: false,
   error: null,
 
@@ -80,6 +87,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const emailVerified = await getItem(EMAIL_VERIFIED_KEY);
       const username = await getItem(USERNAME_KEY);
       const email = await getItem(EMAIL_KEY);
+      const provider = await getItem(PROVIDER_KEY);
       if (token) {
         set({
           token,
@@ -88,6 +96,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           emailVerified: emailVerified === "true",
           username,
           email,
+          provider,
         });
         // Expo can rotate a device's push token between launches.
         void registerPushToken(token);
@@ -133,8 +142,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       );
       const username = data.username ?? null;
       const emailAddr = data.email ?? email;
+      const provider = data.provider ?? "email";
       if (username) await setItem(USERNAME_KEY, username);
       if (emailAddr) await setItem(EMAIL_KEY, emailAddr);
+      await setItem(PROVIDER_KEY, provider);
       set({
         token: data.access_token,
         isAuthenticated: true,
@@ -142,6 +153,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         emailVerified,
         username,
         email: emailAddr,
+        provider,
         isLoading: false,
       });
       // Fire-and-forget: the OS permission prompt must not hold up sign-in.
@@ -197,6 +209,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await setItem(EMAIL_VERIFIED_KEY, "false");
       await setItem(USERNAME_KEY, data.username ?? username);
       await setItem(EMAIL_KEY, data.email ?? email);
+      // Signing up here is always a password account; social accounts are
+      // created by the /auth/social route instead.
+      await setItem(PROVIDER_KEY, data.provider ?? "email");
       set({
         token: data.access_token,
         isAuthenticated: true,
@@ -204,6 +219,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         emailVerified: false,
         username: data.username ?? username,
         email: data.email ?? email,
+        provider: data.provider ?? "email",
         isLoading: false,
       });
       void registerPushToken(data.access_token);
@@ -219,71 +235,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   socialSignIn: async (provider: "google" | "apple") => {
     set({ isLoading: true, error: null });
     try {
-      const supabase = getSupabase();
-      let supabaseToken: string | undefined;
-
-      if (provider === "apple" && Platform.OS === "ios") {
-        // ── Native Apple sign-in (iOS) ──────────────────────────────────────
-        const credential = await AppleAuthentication.signInAsync({
-          requestedScopes: [
-            AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-            AppleAuthentication.AppleAuthenticationScope.EMAIL,
-          ],
-        });
-        if (!credential.identityToken) {
-          set({ isLoading: false });
-          return false;
-        }
-        const { data, error } = await supabase.auth.signInWithIdToken({
-          provider: "apple",
-          token: credential.identityToken,
-        });
-        if (error || !data.session) {
-          set({ error: "Sign-in failed. Try again.", isLoading: false });
-          return false;
-        }
-        supabaseToken = data.session.access_token;
-      } else {
-        // ── Web OAuth flow (Google, and Apple on Android) ───────────────────
-        const redirectTo = Linking.createURL("auth-callback");
-        const { data, error } = await supabase.auth.signInWithOAuth({
-          provider,
-          options: { redirectTo, skipBrowserRedirect: true },
-        });
-        if (error || !data?.url) {
-          set({
-            error: "Couldn't start sign-in. Try again.",
-            isLoading: false,
-          });
-          return false;
-        }
-
-        const result = await WebBrowser.openAuthSessionAsync(
-          data.url,
-          redirectTo,
-        );
-        if (result.type !== "success") {
-          set({ isLoading: false }); // user dismissed / cancelled
-          return false;
-        }
-
-        const parsed = Linking.parse(result.url);
-        const code = parsed.queryParams?.code as string | undefined;
-        if (!code) {
-          set({
-            error: "Sign-in was interrupted. Try again.",
-            isLoading: false,
-          });
-          return false;
-        }
-        const { data: sessionData, error: exErr } =
-          await supabase.auth.exchangeCodeForSession(code);
-        supabaseToken = sessionData?.session?.access_token;
-        if (exErr || !supabaseToken) {
-          set({ error: "Sign-in failed. Try again.", isLoading: false });
-          return false;
-        }
+      const social = await requestSupabaseAccessToken(provider);
+      if (social.status === "cancelled") {
+        set({ isLoading: false }); // user dismissed the provider's sheet
+        return false;
       }
+      if (social.status === "error") {
+        set({ error: social.message, isLoading: false });
+        return false;
+      }
+      const supabaseToken = social.accessToken;
 
       // Bridge the Supabase token to our backend for an app JWT.
       const res = await fetch(`${API_URL}/auth/social`, {
@@ -309,10 +270,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       const appData = await res.json();
 
-      // Backend has validated the token — drop the Supabase session locally so
-      // Storage uploads (avatars, event covers) use the anon key, not this
-      // user's OAuth token. ("local" scope avoids revoking the token server-side.)
-      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+      // The backend has validated the token, so the Supabase session has done
+      // its job and is dropped locally.
+      await releaseSupabaseSession();
 
       await setItem(JWT_KEY, appData.access_token);
       await setItem(EMAIL_VERIFIED_KEY, "true");
@@ -320,6 +280,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await setItem(USERNAME_KEY, appData.username);
       if (appData.email)
         await setItem(EMAIL_KEY, appData.email);
+      await setItem(PROVIDER_KEY, appData.provider ?? provider);
       set({
         token: appData.access_token,
         isAuthenticated: true,
@@ -327,6 +288,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         emailVerified: true,
         username: appData.username ?? null,
         email: appData.email ?? null,
+        provider: appData.provider ?? provider,
         isLoading: false,
       });
       void registerPushToken(appData.access_token);
@@ -571,8 +533,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await deleteItem(EMAIL_VERIFIED_KEY);
     await deleteItem(USERNAME_KEY);
     await deleteItem(EMAIL_KEY);
+    await deleteItem(PROVIDER_KEY);
     useOnboardingStore.getState().reset();
-    set({ token: null, isAuthenticated: false, isNewUser: false, hasCompletedOnboarding: false, emailVerified: false, username: null, email: null, error: null });
+    set({ token: null, isAuthenticated: false, isNewUser: false, hasCompletedOnboarding: false, emailVerified: false, username: null, email: null, provider: null, error: null });
   },
 
   setOnboardingComplete: async () => {

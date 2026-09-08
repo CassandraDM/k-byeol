@@ -66,6 +66,7 @@ export class AuthService {
       emailVerified: user.emailVerified,
       username: user.username,
       email: user.email,
+      provider: user.provider,
     };
   }
 
@@ -74,7 +75,11 @@ export class AuthService {
       where: { email: dto.email },
     });
 
-    if (!user) {
+    // A deleted account no longer holds the address it signed up with, so this
+    // lookup misses it already. The explicit check is here so that stays true
+    // by intent rather than by side effect — and so a restore that has not
+    // finished can never be signed into halfway.
+    if (!user || user.deletedAt) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -89,6 +94,10 @@ export class AuthService {
       emailVerified: user.emailVerified,
       username: user.username,
       email: user.email,
+      // The client needs to know how this account authenticates: it decides
+      // what proof to ask for before something irreversible, and a social
+      // account has no password its owner could ever be asked to re-type.
+      provider: user.provider,
     };
   }
 
@@ -108,6 +117,9 @@ export class AuthService {
       );
     }
 
+    // A deleted account released this address when it went, so `existing` is
+    // null for one and the flow below creates a fresh account — which is
+    // exactly what signing up again with the same email should do.
     const existing = await this.prisma.user.findUnique({ where: { email } });
 
     if (existing) {
@@ -122,6 +134,7 @@ export class AuthService {
         emailVerified: existing.emailVerified,
         username: existing.username,
         email: existing.email,
+        provider: existing.provider,
         isNewUser: false,
       };
     }
@@ -147,8 +160,27 @@ export class AuthService {
       emailVerified: true,
       username: user.username,
       email: user.email,
+      provider: user.provider,
       isNewUser: true,
     };
+  }
+
+  /**
+   * Confirms that `accessToken` is a live session with the social provider, and
+   * that it belongs to `email`.
+   *
+   * This is how a Google or Apple account proves who it is when something
+   * irreversible is asked of it. Those accounts hold a random password minted
+   * at signup that the user has never seen, so re-typing a password is not a
+   * confirmation they are able to give — going back through the provider is.
+   */
+  async assertSocialIdentity(accessToken: string, email: string) {
+    const supabaseUser = await this.fetchSupabaseUser(accessToken);
+    if (supabaseUser.email?.toLowerCase() !== email.toLowerCase()) {
+      throw new UnauthorizedException(
+        'That sign-in belongs to a different account.',
+      );
+    }
   }
 
   /**

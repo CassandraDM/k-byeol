@@ -54,8 +54,11 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
+    // A deleted account reads as gone, like a blocked one: the row still
+    // exists so its messages keep an author, but there is no profile left to
+    // look at.
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
       select: {
         id: true,
         username: true,
@@ -167,7 +170,9 @@ export class UsersService {
    * Includes both events they organise and events they're participating in.
    */
   async getUserEvents(userId: number) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+    });
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -238,7 +243,9 @@ export class UsersService {
    * The marketplace feature is not yet implemented, so this returns an empty array.
    */
   async getUserListings(userId: number) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+    });
     if (!user) {
       throw new NotFoundException('User not found');
     }
