@@ -21,6 +21,7 @@ import {
   confirmationMethod,
   deleteMyAccount,
   providerLabel,
+  GRACE_PERIOD_DAYS,
 } from '@/utils/account';
 import {
   releaseSupabaseSession,
@@ -72,7 +73,7 @@ export default function DeleteAccountScreen() {
 
     Alert.alert(
       'Account deleted',
-      'You can sign up again with the same email whenever you like.',
+      `You can sign up again with the same email whenever you like. If you change your mind about this account, ask us within ${result.gracePeriodDays} days and we can put it back.`,
       [{ text: 'OK', onPress: () => void finish() }],
     );
   };
@@ -121,7 +122,7 @@ export default function DeleteAccountScreen() {
 
     Alert.alert(
       'Delete your account?',
-      'This cannot be undone from the app.',
+      'Nothing here can be undone from the app.',
       [
         { text: 'Keep my account', style: 'cancel' },
         {
@@ -177,6 +178,12 @@ export default function DeleteAccountScreen() {
             <Text style={styles.note}>
               Your email is freed straight away — you can sign up again with it
               whenever you like.
+            </Text>
+            <Text style={styles.note}>
+              You’re signed out at once and can’t sign back in. For{' '}
+              {GRACE_PERIOD_DAYS} days we can still put your account back if you
+              ask us to — but not the things listed above, which go now. After{' '}
+              {GRACE_PERIOD_DAYS} days nothing can be undone.
             </Text>
           </View>
 

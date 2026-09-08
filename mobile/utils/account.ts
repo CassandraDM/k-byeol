@@ -25,6 +25,15 @@ export function providerLabel(provider: string | null | undefined): string {
   return 'your provider';
 }
 
+/**
+ * How long a deleted account can still be restored, in days.
+ *
+ * Mirrors GRACE_PERIOD_DAYS in the API — the screen has to say it before any
+ * request is made, so it cannot wait to be told. The number the API actually
+ * applied comes back with the deletion and is what the confirmation reports.
+ */
+export const GRACE_PERIOD_DAYS = 30;
+
 /** Dated so a second export does not silently overwrite the first. */
 export function exportFileName(now: Date = new Date()): string {
   return `k-byeol-export-${now.toISOString().slice(0, 10)}.json`;
@@ -56,7 +65,7 @@ export function deleteAccountError(
 }
 
 export type DeleteResult =
-  | { status: 'deleted' }
+  | { status: 'deleted'; gracePeriodDays: number }
   | { status: 'error'; message: string };
 
 /**
@@ -89,7 +98,16 @@ export async function deleteMyAccount(
       return { status: 'error', message: deleteAccountError(res.status, body) };
     }
 
-    return { status: 'deleted' };
+    // The API is the authority on how long the account stays restorable; the
+    // constant above is only what the screen had to guess before asking.
+    const body = (await res.json().catch(() => null)) as {
+      gracePeriodDays?: number;
+    } | null;
+
+    return {
+      status: 'deleted',
+      gracePeriodDays: body?.gracePeriodDays ?? GRACE_PERIOD_DAYS,
+    };
   } catch (e) {
     console.error('[deleteMyAccount] network error →', e);
     return {
