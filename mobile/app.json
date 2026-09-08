@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "K-별",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -47,6 +47,14 @@
         }
       ],
       "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "K-별 uses your photos so you can set a profile picture and add a cover image to the events you organise.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
       "@react-native-community/datetimepicker",
       [
         "expo-notifications",

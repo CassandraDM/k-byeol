@@ -32,9 +32,12 @@ function getDevUrl(): string {
  * Base URL for both the REST calls and the socket.io connection — the gateway
  * shares the API's HTTP server, so it lives on the same origin.
  *
- * The production value is baked in at build time, not read at runtime: an EAS
- * build made before this line was set would ship an app that reaches nothing.
+ * EXPO_PUBLIC_API_URL overrides the lot when it is set, which is how you point
+ * a phone that is not on your network at the deployed API without editing this
+ * file. Neither branch is read at runtime: Metro inlines the variable and the
+ * production URL is baked in at build time, so an EAS build made before this
+ * line was set would ship an app that reaches nothing.
  */
-export const API_URL = __DEV__
-  ? getDevUrl()
-  : 'https://k-byeol-production.up.railway.app';
+export const API_URL =
+  process.env.EXPO_PUBLIC_API_URL ??
+  (__DEV__ ? getDevUrl() : 'https://k-byeol-production.up.railway.app');
