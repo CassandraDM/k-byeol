@@ -33,7 +33,7 @@ describe('Messages (e2e)', () => {
   let app: INestApplication<App>;
   let jwt: JwtService;
   let prisma: {
-    user: { findUnique: jest.Mock };
+    user: { findUnique: jest.Mock; findMany: jest.Mock };
     message: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock };
     conversationParticipant: { findUnique: jest.Mock };
     conversation: { update: jest.Mock };

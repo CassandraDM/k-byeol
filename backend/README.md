@@ -111,11 +111,28 @@ becomes one: the events, participations, memberships, follows, blocks,
 preferences and devices are destroyed for real, the restore columns are cleared,
 and the password hash is replaced with one nobody holds the input to.
 
-Reactivating inside the window means moving the four restore columns back and
-clearing `deleted_at` — everything hidden becomes visible again in the same
-motion, because it never went anywhere. It only works while the address is
-still free: the email is released at deletion so a new account can take it, and
-whoever takes it wins.
+Reactivating means moving the four restore columns back and clearing
+`deleted_at` — everything hidden becomes visible again in the same motion,
+because it never went anywhere.
+
+| Method | Route | Description | Body |
+|---|---|---|---|
+| POST | `/auth/reactivate` | Emails a code, or brings a social account straight back | `{ email, password }` or `{ email, accessToken }` |
+| POST | `/auth/reactivate/confirm` | Finishes it, returns a JWT | `{ email, code }` |
+
+Users do not go looking for these. Signing in with a deleted account's
+credentials answers **409** carrying a `reactivation` object instead of the
+usual 401, and the app turns that into an offer — which is also why the
+password is checked before the offer is made: without that, typing an address
+would reveal whether it ever belonged to anyone.
+
+A social account never sees a code. Its provider has just vouched for the
+address, which is the same proof the emailed code exists to obtain.
+
+Reactivation only works while the address is still free. The email is released
+at deletion so a new account can take it, and whoever takes it wins — the
+attempt then answers 409 and says so. A taken *username* is not fatal: the
+account comes back under a suffixed one.
 
 Messages and reports outlive even the purge. `messages.sender_id` is not
 nullable and those messages belong to conversations other people are still

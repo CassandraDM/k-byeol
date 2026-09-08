@@ -50,7 +50,7 @@ describe('Events (e2e)', () => {
   let jwt: JwtService;
   let prisma: {
     $queryRaw: jest.Mock;
-    user: { findUnique: jest.Mock };
+    user: { findUnique: jest.Mock; findMany: jest.Mock };
     userPreferences: { findUnique: jest.Mock };
     event: {
       create: jest.Mock;

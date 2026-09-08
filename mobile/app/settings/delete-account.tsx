@@ -83,7 +83,7 @@ export default function DeleteAccountScreen() {
     setAsking(false);
     Alert.alert(
       'Account deleted',
-      `You can sign up again with the same email whenever you like. If you change your mind about this account, ask us within ${result.gracePeriodDays} days and we can put it back.`,
+      `You can sign up again with the same email whenever you like. Change your mind? Sign in within ${result.gracePeriodDays} days and we'll offer to bring this account back.`,
       [{ text: 'OK', onPress: () => void finish() }],
     );
   };
@@ -132,7 +132,9 @@ export default function DeleteAccountScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.lead}>This deletes for good:</Text>
+          {/* Not "for good" any more: none of this is destroyed until the
+              grace period runs out, so the honest word is "lose". */}
+          <Text style={styles.lead}>You’ll lose:</Text>
           {CONSEQUENCES.map((line) => (
             <View key={line} style={styles.bulletRow}>
               <Ionicons name="close-circle" size={16} color="#E74C3C" />
@@ -147,10 +149,9 @@ export default function DeleteAccountScreen() {
             threads still make sense, but they stop carrying your name.
           </Text>
           <Text style={styles.note}>
-            You’re signed out at once and can’t sign back in. For{' '}
-            {GRACE_PERIOD_DAYS} days we can still put your account back if you
-            ask us to — but not the things listed above, which go now. After{' '}
-            {GRACE_PERIOD_DAYS} days nothing can be undone.
+            Changed your mind? Sign in again within {GRACE_PERIOD_DAYS} days and
+            we’ll offer to bring everything back, exactly as you left it. After{' '}
+            {GRACE_PERIOD_DAYS} days it’s gone for good.
           </Text>
         </View>
 

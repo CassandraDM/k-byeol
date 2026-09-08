@@ -3,7 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
-import { GRACE_PERIOD_DAYS } from './account.service';
+import { reactivationCutoff } from './grace-period';
 
 @Injectable()
 export class AccountPurgeService {
@@ -44,9 +44,7 @@ export class AccountPurgeService {
   }
 
   private async purge(): Promise<number> {
-    const cutoff = new Date(
-      Date.now() - GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000,
-    );
+    const cutoff = reactivationCutoff();
 
     const expired = await this.prisma.user.findMany({
       where: {

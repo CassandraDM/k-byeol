@@ -29,7 +29,7 @@ describe('Follows (e2e)', () => {
   let app: INestApplication<App>;
   let jwt: JwtService;
   let prisma: {
-    user: { findUnique: jest.Mock };
+    user: { findUnique: jest.Mock; findMany: jest.Mock };
     follow: {
       upsert: jest.Mock;
       deleteMany: jest.Mock;

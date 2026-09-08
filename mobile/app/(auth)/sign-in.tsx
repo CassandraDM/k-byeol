@@ -23,6 +23,7 @@ import Animated, {
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { HolographicBackground } from "@/components/ui/holographic-background";
+import { ReactivateAccountDialog } from "@/components/reactivate-account-dialog";
 import { WelcomeText } from "@/components/ui/welcome-text";
 import { useAuthStore } from "@/stores/auth-store";
 import { CustomFonts, Palette } from "@/constants/theme";
@@ -69,8 +70,17 @@ function useAnimatedField(mode: Mode, visibleIn: Mode) {
 // ─── Component ───────────────────────────────────────────────────────────────
 export default function SignInScreen() {
   const router = useRouter();
-  const { signIn, signUp, socialSignIn, isLoading, error, clearError } =
-    useAuthStore();
+  const {
+    signIn,
+    signUp,
+    socialSignIn,
+    isLoading,
+    error,
+    clearError,
+    reactivation,
+    requestReactivation,
+    clearReactivation,
+  } = useAuthStore();
 
   const [mode, setMode] = useState<Mode>("sign-in");
   const [username, setUsername] = useState("");
@@ -423,6 +433,21 @@ export default function SignInScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <ReactivateAccountDialog
+        offer={reactivation}
+        busy={isLoading}
+        onKeepDeleted={clearReactivation}
+        onReactivate={async () => {
+          const outcome = await requestReactivation();
+          // A password account is sent a code and goes on to type it. A social
+          // one is already back — its provider vouched for the address a moment
+          // ago — and the root layout takes it from here.
+          if (outcome === "code-sent") {
+            router.push("/(auth)/reactivate" as any);
+          }
+        }}
+      />
     </View>
   );
 }

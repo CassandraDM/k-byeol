@@ -16,9 +16,14 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyResetCodeDto } from './dto/verify-reset-code.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { SocialLoginDto } from './dto/social-login.dto';
+import { ConfirmReactivationDto, ReactivateDto } from './dto/reactivate.dto';
+import { GRACE_PERIOD_DAYS, reactivationCutoff } from '../account/grace-period';
 
 /** How long a password-reset code stays valid, in minutes. */
 const RESET_TOKEN_TTL_MINUTES = 5;
+
+/** How long a reactivation code stays valid, in minutes. */
+const REACTIVATION_TTL_MINUTES = 5;
 
 /** How long an email-verification code stays valid, in minutes. */
 const EMAIL_VERIFICATION_TTL_MINUTES = 5;
@@ -76,10 +81,9 @@ export class AuthService {
     });
 
     // A deleted account no longer holds the address it signed up with, so this
-    // lookup misses it already. The explicit check is here so that stays true
-    // by intent rather than by side effect — and so a restore that has not
-    // finished can never be signed into halfway.
+    // lookup misses it — which is exactly where somebody coming back lands.
     if (!user || user.deletedAt) {
+      await this.offerReactivation(dto.email, dto.password);
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -118,9 +122,13 @@ export class AuthService {
     }
 
     // A deleted account released this address when it went, so `existing` is
-    // null for one and the flow below creates a fresh account — which is
-    // exactly what signing up again with the same email should do.
+    // null for one. Before treating that as a new signup, check whether it is
+    // their own account they are coming back to — creating a fresh one over
+    // the top would quietly throw away everything reactivation could return.
     const existing = await this.prisma.user.findUnique({ where: { email } });
+    if (!existing) {
+      await this.offerReactivation(email);
+    }
 
     if (existing) {
       // Same email but a different sign-in method → clear error (no linking).
@@ -163,6 +171,238 @@ export class AuthService {
       provider: user.provider,
       isNewUser: true,
     };
+  }
+
+  // ── Reactivation ─────────────────────────────────────────────────────────
+
+  /**
+   * The deleted account that still answers to `email`, if the window is open.
+   *
+   * Deleting frees the address and parks it in `restore_email`, so this is the
+   * only place it can still be found. Past the grace period the purge sweep has
+   * cleared that column, which is what makes the search come up empty rather
+   * than needing a second condition.
+   */
+  private async findReactivatable(email: string) {
+    return this.prisma.user.findFirst({
+      where: {
+        restoreEmail: email,
+        deletedAt: { not: null, gte: reactivationCutoff() },
+      },
+    });
+  }
+
+  /**
+   * Interrupts a sign-in that has landed on a deleted account, so the client
+   * can offer to bring it back instead of reporting bad credentials.
+   *
+   * For a password account the password is checked first: without it this would
+   * tell anyone who typed an address whether it once belonged to somebody. A
+   * social account has no password to check, and its provider has already
+   * vouched for the address by the time we get here.
+   */
+  private async offerReactivation(email: string, password?: string) {
+    const account = await this.findReactivatable(email);
+    if (!account) return;
+
+    if (account.provider === 'email') {
+      if (!password) return;
+      const valid = await bcrypt.compare(password, account.password);
+      if (!valid) return;
+    }
+
+    throw new ConflictException({
+      message:
+        'This account was deleted. You can bring it back, or sign up again ' +
+        'with the same email.',
+      reactivation: {
+        available: true,
+        // Echoed back because a social sign-in never told the client which
+        // address it was using — the provider did, to us. Nothing is disclosed
+        // either way: whoever gets this far has just proved the address is
+        // theirs, by password or by provider.
+        email,
+        provider: account.provider,
+        deletedAt: account.deletedAt,
+        gracePeriodDays: GRACE_PERIOD_DAYS,
+      },
+    });
+  }
+
+  /**
+   * Starts bringing a deleted account back.
+   *
+   * A password account is sent a code at the address it used to hold — the one
+   * thing somebody who guessed the password still cannot reach. A social
+   * account is already through: its provider has just vouched for the address,
+   * which is the same proof, so it comes back here and now.
+   */
+  async requestReactivation(dto: ReactivateDto) {
+    const account = await this.findReactivatable(dto.email);
+    if (!account) {
+      throw new BadRequestException(
+        'There is no deleted account to bring back for this email.',
+      );
+    }
+
+    await this.assertAddressStillFree(account.id, dto.email);
+
+    if (account.provider !== 'email') {
+      if (!dto.accessToken) {
+        throw new BadRequestException(
+          `Sign in with ${account.provider} to bring your account back.`,
+        );
+      }
+      await this.assertSocialIdentity(dto.accessToken, dto.email);
+      return this.reactivate(account.id);
+    }
+
+    if (!dto.password) {
+      throw new BadRequestException('Your password is needed to confirm.');
+    }
+    const valid = await bcrypt.compare(dto.password, account.password);
+    if (!valid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    await this.sendReactivationCode(account.id, dto.email);
+    return { codeSent: true, email: dto.email };
+  }
+
+  /** Finishes an email account's reactivation with the code it was sent. */
+  async confirmReactivation(dto: ConfirmReactivationDto) {
+    const account = await this.findReactivatable(dto.email);
+    if (!account) {
+      throw new BadRequestException(
+        'There is no deleted account to bring back for this email.',
+      );
+    }
+
+    const record = await this.prisma.emailVerificationToken.findUnique({
+      where: { tokenHash: this.hashToken(dto.code) },
+    });
+    if (!record || record.userId !== account.id || record.usedAt) {
+      throw new BadRequestException('Invalid reactivation code');
+    }
+    if (record.expiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('This reactivation code has expired');
+    }
+
+    await this.assertAddressStillFree(account.id, dto.email);
+    await this.prisma.emailVerificationToken.update({
+      where: { id: record.id },
+      data: { usedAt: new Date() },
+    });
+
+    return this.reactivate(account.id);
+  }
+
+  /**
+   * Puts the account back.
+   *
+   * Nothing was destroyed when it was deleted, so this is only the four parked
+   * columns moving home and `deletedAt` being cleared. Everything the account
+   * owned — its events, its participations, who it followed — becomes visible
+   * again in the same motion, because none of it ever went anywhere.
+   */
+  private async reactivate(userId: number) {
+    const account = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+    });
+
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        email: account.restoreEmail!,
+        username: await this.freeUsername(userId, account.restoreUsername!),
+        avatar: account.restoreAvatar,
+        bio: account.restoreBio,
+        deletedAt: null,
+        restoreEmail: null,
+        restoreUsername: null,
+        restoreAvatar: null,
+        restoreBio: null,
+        // Coming back through the mailbox, or through the provider that owns
+        // it, is the same proof signing up asks for.
+        emailVerified: true,
+      },
+    });
+
+    return {
+      access_token: this.generateToken(user.id, user.email),
+      emailVerified: true,
+      username: user.username,
+      email: user.email,
+      provider: user.provider,
+      reactivated: true,
+    };
+  }
+
+  /**
+   * Refuses a reactivation whose address has been taken in the meantime.
+   *
+   * The email is freed the moment an account is deleted — that is what lets
+   * somebody sign up again with it straight away — so during the grace period
+   * two people can have a claim on it, and whoever got there first keeps it.
+   */
+  private async assertAddressStillFree(userId: number, email: string) {
+    const holder = await this.prisma.user.findUnique({ where: { email } });
+    if (holder && holder.id !== userId) {
+      throw new ConflictException(
+        'That email now belongs to another account, so this one cannot be ' +
+          'brought back.',
+      );
+    }
+  }
+
+  /**
+   * The old username back, or the nearest free one.
+   *
+   * Unlike the email, a taken username is no reason to refuse the whole
+   * reactivation — the account can come back under a suffixed name and be
+   * renamed later.
+   */
+  private async freeUsername(userId: number, wanted: string): Promise<string> {
+    let candidate = wanted;
+    for (let suffix = 1; suffix < 100; suffix++) {
+      const holder = await this.prisma.user.findUnique({
+        where: { username: candidate },
+      });
+      if (!holder || holder.id === userId) return candidate;
+      candidate = `${wanted}${suffix}`.slice(0, 50);
+    }
+    return `${wanted}${randomBytes(3).toString('hex')}`.slice(0, 50);
+  }
+
+  /** Mints, stores and emails a one-time code for bringing an account back. */
+  private async sendReactivationCode(userId: number, email: string) {
+    await this.prisma.emailVerificationToken.deleteMany({
+      where: { userId, usedAt: null },
+    });
+
+    let rawCode = '';
+    let tokenHash = '';
+    for (let attempt = 0; attempt < 5; attempt++) {
+      rawCode = this.generateSixDigitCode();
+      tokenHash = this.hashToken(rawCode);
+      const clash = await this.prisma.emailVerificationToken.findUnique({
+        where: { tokenHash },
+      });
+      if (!clash) break;
+    }
+
+    const expiresAt = new Date(
+      Date.now() + REACTIVATION_TTL_MINUTES * 60 * 1000,
+    );
+    await this.prisma.emailVerificationToken.create({
+      data: { userId, tokenHash, expiresAt },
+    });
+
+    await this.mail.sendReactivationCode(
+      email,
+      rawCode,
+      REACTIVATION_TTL_MINUTES,
+    );
   }
 
   /**

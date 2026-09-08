@@ -10,15 +10,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { DeleteAccountDto } from './dto/delete-account.dto';
 
-/**
- * How long a deleted account stays restorable.
- *
- * The window is not a delay before anything happens — everything the user can
- * observe happens the moment they confirm. It is how long the two columns that
- * make a restore possible survive, which also gives moderation a bounded period
- * in which a report filed against the account can still be acted on.
- */
-export const GRACE_PERIOD_DAYS = 30;
+export { GRACE_PERIOD_DAYS } from './grace-period';
+import { GRACE_PERIOD_DAYS } from './grace-period';
 
 /**
  * `.invalid` is reserved by RFC 2606 and resolves nowhere by definition, so a

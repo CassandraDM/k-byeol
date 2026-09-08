@@ -23,7 +23,12 @@ const callArg = <T>(mock: jest.Mock, argIndex = 0, callIndex = 0): T => {
 describe('AuthService — password reset', () => {
   let service: AuthService;
   let prisma: {
-    user: { findUnique: jest.Mock; update: jest.Mock; create: jest.Mock };
+    user: {
+      findUnique: jest.Mock;
+      findFirst: jest.Mock;
+      update: jest.Mock;
+      create: jest.Mock;
+    };
     passwordResetToken: {
       findUnique: jest.Mock;
       create: jest.Mock;
@@ -42,7 +47,14 @@ describe('AuthService — password reset', () => {
 
   beforeEach(async () => {
     prisma = {
-      user: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn() },
+      user: {
+        findUnique: jest.fn(),
+        // Asked whether an address belongs to a deleted account waiting to be
+        // brought back. It does not, unless a test says so.
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn(),
+        create: jest.fn(),
+      },
       passwordResetToken: {
         findUnique: jest.fn(),
         create: jest.fn(),

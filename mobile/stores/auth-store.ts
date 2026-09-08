@@ -58,6 +58,34 @@ interface AuthState {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (username: string, email: string, password: string) => Promise<void>;
   socialSignIn: (provider: "google" | "apple") => Promise<boolean>;
+  /**
+   * Set when a sign-in lands on an account its owner deleted, and the grace
+   * period has not run out. The screen offers to bring it back instead of
+   * reporting bad credentials; clearing it is how the offer is declined.
+   */
+  reactivation: {
+    email: string;
+    provider: string;
+    gracePeriodDays: number;
+    /**
+     * Held in memory only, never written to storage, and dropped the moment
+     * the offer is taken or declined. The API asks for the proof again rather
+     * than trusting the failed sign-in, and this is the proof the user just
+     * typed one screen ago — asking for it twice would be theatre.
+     */
+    password?: string;
+    accessToken?: string;
+  } | null;
+  requestReactivation: () => Promise<"code-sent" | "reactivated" | "error">;
+  confirmReactivation: (code: string) => Promise<boolean>;
+  clearReactivation: () => void;
+  /** Stores a session the API just issued, whatever route produced it. */
+  adoptSession: (data: {
+    access_token: string;
+    username?: string;
+    email?: string;
+    provider?: string;
+  }) => Promise<void>;
   forgotPassword: (email: string) => Promise<boolean>;
   verifyResetCode: (code: string) => Promise<boolean>;
   resetPassword: (token: string, password: string) => Promise<boolean>;
@@ -77,6 +105,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   username: null,
   email: null,
   provider: null,
+  reactivation: null,
   isLoading: false,
   error: null,
 
@@ -114,6 +143,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
+
+      // The account was deleted, the window is still open, and the password
+      // was right — so this is its owner coming back, not a failed sign-in.
+      if (res.status === 409) {
+        const body = await res.json().catch(() => ({}));
+        if (body?.reactivation?.available) {
+          set({
+            reactivation: {
+              email,
+              password,
+              provider: body.reactivation.provider ?? "email",
+              gracePeriodDays: body.reactivation.gracePeriodDays ?? 30,
+            },
+            isLoading: false,
+          });
+          return;
+        }
+      }
 
       if (res.status === 401) {
         set({
@@ -254,6 +301,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
 
       if (res.status === 409) {
+        const body = await res.json().catch(() => ({}));
+        // Two different conflicts share this status: an address already taken
+        // by a password account, and one whose owner deleted it and can have
+        // it back. Only the second carries a reactivation offer.
+        if (body?.reactivation?.available) {
+          set({
+            reactivation: {
+              email: body.reactivation.email ?? "",
+              accessToken: supabaseToken,
+              provider: body.reactivation.provider ?? provider,
+              gracePeriodDays: body.reactivation.gracePeriodDays ?? 30,
+            },
+            isLoading: false,
+          });
+          return false;
+        }
         set({
           error:
             "An account with this email already exists. Log in with your email and password instead.",
@@ -306,6 +369,132 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
       return false;
     }
+  },
+
+  /**
+   * Takes up the offer to bring a deleted account back.
+   *
+   * A password account is sent a code and the caller moves on to the code
+   * screen; a social account is already through — its provider vouched for the
+   * address a moment ago, which is the same proof — and comes straight back
+   * signed in.
+   */
+  requestReactivation: async () => {
+    const { reactivation } = get();
+    if (!reactivation) return "error";
+
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch(`${API_URL}/auth/reactivate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: reactivation.email,
+          password: reactivation.password,
+          accessToken: reactivation.accessToken,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        set({
+          error:
+            typeof body.message === "string"
+              ? body.message
+              : "Hmm… something's off. Try again.",
+          isLoading: false,
+        });
+        return "error";
+      }
+
+      const data = await res.json();
+      // A social account comes back with a token in hand.
+      if (data.access_token) {
+        await get().adoptSession(data);
+        set({ reactivation: null });
+        return "reactivated";
+      }
+
+      set({ isLoading: false });
+      return "code-sent";
+    } catch (e) {
+      console.error("[requestReactivation] Network error →", e);
+      set({
+        error: "Can't reach the server right now. Check your connection.",
+        isLoading: false,
+      });
+      return "error";
+    }
+  },
+
+  confirmReactivation: async (code: string) => {
+    const { reactivation } = get();
+    if (!reactivation) return false;
+
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch(`${API_URL}/auth/reactivate/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: reactivation.email, code }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const message = Array.isArray(body.message)
+          ? body.message[0]
+          : body.message;
+        set({
+          error:
+            typeof message === "string"
+              ? message
+              : "Hmm… something's off. Try again.",
+          isLoading: false,
+        });
+        return false;
+      }
+
+      await get().adoptSession(await res.json());
+      set({ reactivation: null });
+      return true;
+    } catch (e) {
+      console.error("[confirmReactivation] Network error →", e);
+      set({
+        error: "Can't reach the server right now. Check your connection.",
+        isLoading: false,
+      });
+      return false;
+    }
+  },
+
+  clearReactivation: () => set({ reactivation: null, error: null }),
+
+  /**
+   * Stores a session the API just issued. The password held for the
+   * reactivation offer goes no further than this.
+   */
+  adoptSession: async (data: {
+    access_token: string;
+    username?: string;
+    email?: string;
+    provider?: string;
+  }) => {
+    await setItem(JWT_KEY, data.access_token);
+    await setItem(EMAIL_VERIFIED_KEY, "true");
+    if (data.username) await setItem(USERNAME_KEY, data.username);
+    if (data.email) await setItem(EMAIL_KEY, data.email);
+    await setItem(PROVIDER_KEY, data.provider ?? "email");
+    set({
+      token: data.access_token,
+      isAuthenticated: true,
+      isNewUser: false,
+      emailVerified: true,
+      username: data.username ?? null,
+      email: data.email ?? null,
+      provider: data.provider ?? "email",
+      isLoading: false,
+    });
+    void registerPushToken(data.access_token);
   },
 
   forgotPassword: async (email: string) => {
@@ -535,7 +724,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await deleteItem(EMAIL_KEY);
     await deleteItem(PROVIDER_KEY);
     useOnboardingStore.getState().reset();
-    set({ token: null, isAuthenticated: false, isNewUser: false, hasCompletedOnboarding: false, emailVerified: false, username: null, email: null, provider: null, error: null });
+    set({ token: null, isAuthenticated: false, isNewUser: false, hasCompletedOnboarding: false, emailVerified: false, username: null, email: null, provider: null, reactivation: null, error: null });
   },
 
   setOnboardingComplete: async () => {
