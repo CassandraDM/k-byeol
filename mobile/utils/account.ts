@@ -1,5 +1,4 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
 
 import { API_URL } from '@/constants/api';
 import { useAuthStore } from '@/stores/auth-store';
@@ -105,6 +104,23 @@ export type ExportResult =
   | { status: 'error'; message: string };
 
 /**
+ * Loads expo-sharing at the point of use rather than at the top of the file.
+ *
+ * It is a native module: a static import runs `requireNativeModule` the moment
+ * anything imports this file, and a client built before the dependency existed
+ * does not have it — which took every screen importing this one down with it,
+ * not just the export. Loaded here, a missing module is one button reporting
+ * that it needs a rebuild, which is the truth and is survivable.
+ */
+async function loadSharing(): Promise<typeof import('expo-sharing') | null> {
+  try {
+    return await import('expo-sharing');
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Downloads the account's data and hands the file to the OS share sheet.
  *
  * It goes to the cache directory rather than documents: once the user has sent
@@ -127,6 +143,14 @@ export async function exportMyData(): Promise<ExportResult> {
       encoding: FileSystem.EncodingType.UTF8,
     });
 
+    const Sharing = await loadSharing();
+    if (!Sharing) {
+      return {
+        status: 'error',
+        message:
+          'This build can’t open the share sheet yet. Rebuild the app to export your data.',
+      };
+    }
     if (!(await Sharing.isAvailableAsync())) {
       return {
         status: 'error',
