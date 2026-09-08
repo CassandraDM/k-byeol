@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { setupSwagger, swaggerDocsGuard, SWAGGER_PATHS } from './swagger';
 
 /**
  * Browser origins allowed to call the API. Native builds aren't subject to
@@ -31,6 +32,14 @@ async function bootstrap() {
   // headers no client reads.
   app.use(helmet({ contentSecurityPolicy: false }));
 
+  // Registered here, next to helmet, rather than beside the routes it guards:
+  // middleware added later in the boot sequence never gets to run against
+  // them, because SwaggerModule has already bound a handler that answers first.
+  const docsGuard = swaggerDocsGuard();
+  if (docsGuard) {
+    for (const path of SWAGGER_PATHS) app.use(path, docsGuard);
+  }
+
   app.enableCors({ origin: corsOrigins(), credentials: true });
 
   app.useGlobalPipes(
@@ -42,6 +51,10 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
+
+  // After the pipes, so the document describes the API as it actually
+  // behaves — the validation rules the DTOs declare are part of the contract.
+  setupSwagger(app);
 
   // '::' is what Node binds when no host is given, and on Linux it is
   // dual-stack — IPv6 plus IPv4-mapped addresses. Passing '0.0.0.0' instead

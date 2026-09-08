@@ -36,7 +36,36 @@ The API runs on `http://localhost:3000` by default.
 
 See [`.env.example`](.env.example) for all required variables.
 
+## API documentation
+
+Swagger UI at [`/api-docs`](http://localhost:3000/api-docs), the raw spec at
+`/api-docs-json`: 52 operations across 11 tags, generated from the code rather
+than written beside it. Sign in through `POST /auth/login`, paste the
+`access_token` into **Authorize**, and every guarded route becomes callable
+from the page.
+
+Request and response shapes come from the DTOs themselves — the Swagger CLI
+plugin is enabled in `nest-cli.json`, so a field added to a DTO documents
+itself and one removed stops being documented.
+
+**It is not open.** A spec is a complete map of every route, parameter and
+error shape, and #63 was about not handing out what the API does not need to
+give away — so `SWAGGER_USER` and `SWAGGER_PASSWORD` put it behind basic auth.
+Leave them unset and the docs are open in development and **not served at all**
+in production, failing closed the way `JWT_SECRET` and `DATABASE_CA_CERT` do.
+
+One thing to know if you touch the guard: it is registered in `main.ts`
+alongside helmet, not next to the routes it protects. Middleware added later in
+the boot sequence never runs against them, because `SwaggerModule` has already
+bound a handler that answers first.
+
+The chat is absent by nature: it runs over socket.io on this same origin, and
+OpenAPI has no way to describe WebSocket events.
+
 ## API endpoints
+
+The tables below cover what the generated spec cannot: why a route behaves the
+way it does. For the shapes themselves, read `/api-docs`.
 
 ### Authentication
 

@@ -254,6 +254,88 @@ const SEED_EVENTS = [
   },
 ];
 
+/**
+ * Conversations for the Bordeaux events, keyed by event title.
+ *
+ * Every event opens a group chat of its own (#43), but the seed writes events
+ * straight to the database rather than through the service that opens them, so
+ * without this the demo would show a map full of events whose chats are all
+ * empty.
+ *
+ * `from` is a seeded username, or "organizer". Only the organizer and whoever
+ * they have given write access can post in an event chat, so everyone who
+ * speaks below is made a WRITER — which is also what puts the role system on
+ * screen.
+ */
+const BORDEAUX_EVENT_CHATS: Record<
+  string,
+  Array<{ from: string; text: string; minutesAgo: number }>
+> = {
+  'Random Play Dance Bordeaux': [
+    { from: 'organizer', text: 'Salut tout le monde ! On se retrouve samedi Place des Quinconces 🎶', minutesAgo: 2880 },
+    { from: 'organizer', text: 'Rendez-vous à 14h devant la fontaine, on commence à 14h30 pile.',    minutesAgo: 2875 },
+    { from: 'Neeko',     text: "Est-ce qu'il y aura une enceinte ou on prend la nôtre ?",            minutesAgo: 1440 },
+    { from: 'organizer', text: "Enceinte fournie ! Ramenez juste de l'eau, il va faire chaud ☀️",    minutesAgo: 1430 },
+    { from: 'Beeko',     text: "La playlist est dispo quelque part ? J'aimerais réviser les chorés 💃", minutesAgo: 300 },
+    { from: 'organizer', text: 'Je la partage jeudi soir. 2nd → 5th gen, il y en aura pour tout le monde 🔥', minutesAgo: 295 },
+    { from: 'Yuna',      text: 'Trop hâte !! On sera 4 de Talence',                                   minutesAgo: 90 },
+  ],
+  'BTS Army Meetup Bordeaux': [
+    { from: 'organizer', text: "ARMY de Bordeaux, on se retrouve au Miroir d'Eau 💜",       minutesAgo: 4320 },
+    { from: 'Mimi',      text: 'Je ramène les ballons violets !',                            minutesAgo: 4200 },
+    { from: 'organizer', text: 'Parfait 🙏 Prévoyez aussi vos lightsticks si vous en avez.', minutesAgo: 4100 },
+    { from: 'Mimi',      text: 'On fait Dynamite et Butter en cover ?',                      minutesAgo: 720 },
+    { from: 'organizer', text: 'Oui, plus un freestyle à la fin pour ceux qui veulent 😄',   minutesAgo: 700 },
+    { from: 'Hana',      text: 'Je viens avec mon appareil, je vous prends en photo 📸',     minutesAgo: 180 },
+  ],
+  'Stray Kids Freestyle Challenge': [
+    { from: 'organizer', text: 'Challenge freestyle rue Sainte-Catherine ! Format : 1 min par personne.', minutesAgo: 5760 },
+    { from: 'Liㄱ',      text: "Je m'occupe du jury avec deux potes danseurs 👀",                        minutesAgo: 5700 },
+    { from: 'organizer', text: "Nickel. On garde MANIAC et God's Menu dans la sélection.",                minutesAgo: 5600 },
+    { from: 'Liㄱ',      text: 'Petit rappel : on danse sur le côté, faut laisser passer les gens 🙏',    minutesAgo: 600 },
+    { from: 'Beeko',     text: 'Noté ! Il reste des places pour participer ?',                            minutesAgo: 240 },
+    { from: 'organizer', text: 'Toujours, inscription sur place le jour même 🙂',                         minutesAgo: 230 },
+  ],
+  'K-pop Festival Bordeaux': [
+    { from: 'organizer', text: 'Première édition du festival au Parc des Expositions 🎉',                minutesAgo: 10080 },
+    { from: 'organizer', text: 'Au programme : battles de danse, scène ouverte et stands de merch.',      minutesAgo: 10070 },
+    { from: 'Hana',      text: "Je couvre l'événement en photo, dites-moi si vous voulez un shooting !",  minutesAgo: 8000 },
+    { from: 'organizer', text: 'Avec plaisir 🙌 On te réserve un créneau en backstage.',                  minutesAgo: 7900 },
+    { from: 'Yuna',      text: 'Les inscriptions aux battles ouvrent quand ?',                            minutesAgo: 1200 },
+    { from: 'organizer', text: "Deux semaines avant, je préviens ici en premier 📣",                      minutesAgo: 1150 },
+  ],
+  'ITZY Cover Stage at Jardin Public': [
+    { from: 'organizer', text: 'Scène ITZY au Jardin Public, on répète WANNABE et LOCO 💫',    minutesAgo: 4000 },
+    { from: 'Yuna',      text: "Je prends la partie de Yeji si personne ne l'a prise !",        minutesAgo: 3900 },
+    { from: 'organizer', text: 'Elle est à toi 😄',                                            minutesAgo: 3880 },
+    { from: 'Yuna',      text: 'Répétition générale la veille à 18h, tout le monde est dispo ?', minutesAgo: 400 },
+    { from: 'Mimi',      text: 'Présente !',                                                    minutesAgo: 380 },
+  ],
+  'NewJeans RPD at Chartrons': [
+    { from: 'organizer', text: 'RPD spécial NewJeans au marché des Chartrons 🐰',                minutesAgo: 6000 },
+    { from: 'Beeko',     text: 'Ditto, Hype Boy, OMG… on part sur les classiques ?',              minutesAgo: 5900 },
+    { from: 'organizer', text: 'Exactement, plus deux surprises 👀',                              minutesAgo: 5850 },
+    { from: 'Neeko',     text: 'Le sol est pavé là-bas, prévoyez de bonnes chaussures 😅',        minutesAgo: 500 },
+  ],
+  'Bordeaux K-pop in Public': [
+    { from: 'organizer', text: "On danse au Miroir d'Eau ! Attention, le sol est glissant quand il est mouillé.", minutesAgo: 3000 },
+    { from: 'Neeko',     text: "On se met plutôt côté Place de la Bourse alors, c'est plus sec.",                 minutesAgo: 2900 },
+    { from: 'organizer', text: 'Bonne idée, on fera comme ça 👍',                                                 minutesAgo: 2880 },
+    { from: 'Hana',      text: 'Quelqu\'un a le lien de la choré de la dernière fois ?',                          minutesAgo: 150 },
+  ],
+};
+
+/**
+ * Accounts given write access in the Bordeaux event chats.
+ *
+ * An event chat is read-only until its organizer hands out the microphone, so
+ * an account used for a live demo joins as a reader and cannot type a word.
+ * These are promoted to WRITER wherever they are already a participant —
+ * never added to a thread they had not joined, which would be inventing
+ * attendance rather than granting a permission.
+ */
+const DEMO_WRITERS = ['demo@kbyeol.dev'];
+
 async function main() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
@@ -574,6 +656,179 @@ async function main() {
       { from: lig.id,   text: 'OK pour moi aussi',                       minutesAgo: 280 },
     ],
   );
+
+  // ─── Event group chats ─────────────────────────────────────────────────
+  // Built the same way ConversationsService.ensureEventConversation builds
+  // them — GROUP, named after the event, owned by its organizer — because the
+  // app has to recognise them as the event's own thread, not as a stray group.
+  console.log('Seeding event chats...');
+  // Keyed on the names written in the scripts above, not on what the database
+  // holds. A seeded account renamed in the app keeps its row, and the upsert
+  // further up deliberately leaves `username` alone — so the two drift, and
+  // every line by that speaker quietly found nobody to say it.
+  const byUsername = new Map<string, { id: number }>(
+    SEED_USERS.map((u, i) => [u.username, { id: seedUsers[i].id }]),
+  );
+  byUsername.set('organizer', { id: organizer.id });
+
+  for (const event of seededEvents) {
+    const script = BORDEAUX_EVENT_CHATS[event.title];
+    if (!script) continue;
+
+    // The thread usually exists already: the app opens one the moment somebody
+    // joins the event, so a database that has seen any use has them all — and
+    // all of them empty. Skipping on their existence, rather than on their
+    // contents, is why an earlier version of this seeded nothing at all.
+    const thread = await prisma.conversation.findUnique({
+      where: { eventId: event.id },
+      select: { id: true, _count: { select: { messages: true } } },
+    });
+    if (thread && thread._count.messages > 0) continue;
+
+    const speakers = [...new Set(script.map((m) => m.from))]
+      .map((name) => byUsername.get(name))
+      .filter((u): u is { id: number } => u !== undefined)
+      .filter((u) => u.id !== event.organizerId);
+
+    // Everyone who speaks below has to be at the event and allowed to post:
+    // attendees join an event chat read-only, and only the organizer can
+    // change that. Seeding messages from people who could not have sent them
+    // would put the demo at odds with its own rules.
+    for (const speaker of speakers) {
+      await prisma.eventParticipation.upsert({
+        where: { userId_eventId: { userId: speaker.id, eventId: event.id } },
+        create: { userId: speaker.id, eventId: event.id },
+        update: {},
+      });
+    }
+
+    let conversationId: number;
+    if (thread) {
+      conversationId = thread.id;
+    } else {
+      const created = await prisma.conversation.create({
+        data: {
+          type: ConversationType.GROUP,
+          name: event.title,
+          eventId: event.id,
+          ownerId: event.organizerId,
+        },
+        select: { id: true },
+      });
+      conversationId = created.id;
+      convCount++;
+    }
+
+    // Upserts throughout: an existing thread already has its own participants,
+    // and a speaker who is in it as a reader needs promoting rather than
+    // adding a second time.
+    await prisma.conversationParticipant.upsert({
+      where: {
+        userId_conversationId: { userId: event.organizerId, conversationId },
+      },
+      create: { userId: event.organizerId, conversationId, role: 'OWNER' },
+      update: { role: 'OWNER' },
+    });
+    for (const speaker of speakers) {
+      await prisma.conversationParticipant.upsert({
+        where: { userId_conversationId: { userId: speaker.id, conversationId } },
+        create: { userId: speaker.id, conversationId, role: 'WRITER' },
+        update: { role: 'WRITER' },
+      });
+    }
+
+    // Anyone else already signed up joins as a reader, which is what the app
+    // does for an attendee who has not been given the microphone.
+    const attendees = await prisma.eventParticipation.findMany({
+      where: { eventId: event.id },
+      select: { userId: true },
+    });
+    const seated = new Set([event.organizerId, ...speakers.map((s) => s.id)]);
+    for (const { userId } of attendees) {
+      if (seated.has(userId)) continue;
+      await prisma.conversationParticipant.upsert({
+        where: { userId_conversationId: { userId, conversationId } },
+        create: { userId, conversationId, role: 'MEMBER' },
+        update: {},
+      });
+    }
+
+    let lastEventMessage: { text: string; createdAt: Date } | null = null;
+    for (const m of script) {
+      const sender = byUsername.get(m.from);
+      if (!sender) {
+        // Loudly: a missing speaker is a typo in the script above, and
+        // skipping quietly is how two of these went unnoticed.
+        console.warn(`  ! unknown speaker "${m.from}" — message skipped`);
+        continue;
+      }
+      const createdAt = new Date(Date.now() - m.minutesAgo * 60_000);
+      await prisma.message.create({
+        data: {
+          conversationId,
+          senderId: sender.id,
+          text: m.text,
+          createdAt,
+        },
+      });
+      lastEventMessage = { text: m.text, createdAt };
+      msgCount++;
+    }
+
+    if (lastEventMessage) {
+      await prisma.conversation.update({
+        where: { id: conversationId },
+        data: {
+          lastMessageText: lastEventMessage.text,
+          lastMessageAt: lastEventMessage.createdAt,
+        },
+      });
+    }
+  }
+
+  // ─── Demo accounts, given the microphone ───────────────────────────────
+  // Run after the chats exist, so a first seed on an empty database promotes
+  // them in the same pass rather than needing a second.
+  const bordeauxEventTitles = Object.keys(BORDEAUX_EVENT_CHATS);
+  let promoted = 0;
+  for (const email of DEMO_WRITERS) {
+    const account = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, username: true },
+    });
+    if (!account) {
+      console.log(`  ${email} not found — nothing to promote.`);
+      continue;
+    }
+
+    const memberships = await prisma.conversationParticipant.findMany({
+      where: {
+        userId: account.id,
+        role: 'MEMBER',
+        conversation: {
+          eventId: { not: null },
+          event: { title: { in: bordeauxEventTitles } },
+        },
+      },
+      select: { conversationId: true },
+    });
+
+    for (const { conversationId } of memberships) {
+      await prisma.conversationParticipant.update({
+        where: {
+          userId_conversationId: { userId: account.id, conversationId },
+        },
+        data: { role: 'WRITER' },
+      });
+      promoted++;
+    }
+    console.log(
+      `  ${account.username} <${email}>: WRITER in ${memberships.length} event chat(s).`,
+    );
+  }
+  if (promoted > 0) {
+    console.log(`Granted write access ${promoted} time(s).`);
+  }
 
   console.log(`Seeded ${convCount} new conversations with ${msgCount} messages.`);
 

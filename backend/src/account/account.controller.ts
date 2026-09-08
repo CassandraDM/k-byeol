@@ -14,6 +14,8 @@ import type { Request, Response } from 'express';
 import { AccountService } from './account.service';
 import { DeleteAccountDto } from './dto/delete-account.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiAuthenticated } from '../common/api-responses';
 
 /**
  * Deleting checks a password, so it is guessable in the way the auth routes
@@ -29,10 +31,13 @@ const SENSITIVE = { default: { ttl: 60_000, limit: 10 } };
  */
 @Controller('me')
 @UseGuards(JwtAuthGuard)
+@ApiTags('Account')
+@ApiAuthenticated()
 export class AccountController {
   constructor(private readonly accountService: AccountService) {}
 
   @Delete()
+  @ApiOperation({ summary: 'Delete the current account' })
   @Throttle(SENSITIVE)
   @HttpCode(HttpStatus.OK)
   // The parameter stays a bare DeleteAccountDto: a union type would erase the
@@ -50,6 +55,7 @@ export class AccountController {
    * user is meant to keep, and the filename is part of what they get.
    */
   @Get('export')
+  @ApiOperation({ summary: 'Download everything the account holds' })
   async exportData(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,

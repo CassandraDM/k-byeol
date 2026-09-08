@@ -19,6 +19,8 @@ import {
   MinLength,
 } from 'class-validator';
 import type { Request } from 'express';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiAuthenticated } from '../common/api-responses';
 
 class UpdateProfileDto {
   @IsOptional()
@@ -51,16 +53,20 @@ class UpdateProfileDto {
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
+@ApiTags('Users')
+@ApiAuthenticated()
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get(':id')
+  @ApiOperation({ summary: 'A user profile, with fandoms and follow counters' })
   getById(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
     const user = req['user'] as { id: number };
     return this.usersService.getProfile(id, user.id);
   }
 
   @Put(':id')
+  @ApiOperation({ summary: 'Update your own profile' })
   updateById(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
@@ -74,11 +80,13 @@ export class UsersController {
   }
 
   @Get(':id/events')
+  @ApiOperation({ summary: 'A user events, split into upcoming and past' })
   getEvents(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.getUserEvents(id);
   }
 
   @Get(':id/listings')
+  @ApiOperation({ summary: 'A user marketplace listings' })
   getListings(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.getUserListings(id);
   }

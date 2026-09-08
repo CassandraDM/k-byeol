@@ -13,6 +13,8 @@ import {
 import type { Request } from 'express';
 import { FollowsService } from './follows.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiAuthenticated } from '../common/api-responses';
 
 /**
  * Follows live under `/users` alongside blocks, so "a collection belonging to
@@ -24,6 +26,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
  */
 @Controller('users')
 @UseGuards(JwtAuthGuard)
+@ApiTags('Follows')
+@ApiAuthenticated()
 export class FollowsController {
   constructor(private readonly follows: FollowsService) {}
 
@@ -35,6 +39,7 @@ export class FollowsController {
    * feature landed, and the length is the count.
    */
   @Get('me/following')
+  @ApiOperation({ summary: 'Who you follow' })
   async listOwnFollowing(@Req() req: Request) {
     const user = req['user'] as { id: number };
     const { following } = await this.follows.listFollowing(user.id, user.id);
@@ -42,6 +47,7 @@ export class FollowsController {
   }
 
   @Post(':id/follow')
+  @ApiOperation({ summary: 'Follow a user' })
   @HttpCode(HttpStatus.OK)
   follow(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
     const user = req['user'] as { id: number };
@@ -49,6 +55,7 @@ export class FollowsController {
   }
 
   @Delete(':id/follow')
+  @ApiOperation({ summary: 'Unfollow a user' })
   @HttpCode(HttpStatus.OK)
   unfollow(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
     const user = req['user'] as { id: number };
@@ -57,6 +64,7 @@ export class FollowsController {
 
   /** Follower count plus the list — profiles are public to signed-in users. */
   @Get(':id/followers')
+  @ApiOperation({ summary: 'The followers of a profile' })
   listFollowers(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
     const user = req['user'] as { id: number };
     return this.follows.listFollowers(id, user.id);
@@ -64,6 +72,7 @@ export class FollowsController {
 
   /** Who this profile follows. Same visibility rules as its followers. */
   @Get(':id/following')
+  @ApiOperation({ summary: 'Who a profile follows' })
   listFollowing(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
     const user = req['user'] as { id: number };
     return this.follows.listFollowing(id, user.id);
