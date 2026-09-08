@@ -325,6 +325,17 @@ const BORDEAUX_EVENT_CHATS: Record<
   ],
 };
 
+/**
+ * Accounts given write access in the Bordeaux event chats.
+ *
+ * An event chat is read-only until its organizer hands out the microphone, so
+ * an account used for a live demo joins as a reader and cannot type a word.
+ * These are promoted to WRITER wherever they are already a participant —
+ * never added to a thread they had not joined, which would be inventing
+ * attendance rather than granting a permission.
+ */
+const DEMO_WRITERS = ['demo@kbyeol.dev'];
+
 async function main() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
@@ -773,6 +784,50 @@ async function main() {
         },
       });
     }
+  }
+
+  // ─── Demo accounts, given the microphone ───────────────────────────────
+  // Run after the chats exist, so a first seed on an empty database promotes
+  // them in the same pass rather than needing a second.
+  const bordeauxEventTitles = Object.keys(BORDEAUX_EVENT_CHATS);
+  let promoted = 0;
+  for (const email of DEMO_WRITERS) {
+    const account = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, username: true },
+    });
+    if (!account) {
+      console.log(`  ${email} not found — nothing to promote.`);
+      continue;
+    }
+
+    const memberships = await prisma.conversationParticipant.findMany({
+      where: {
+        userId: account.id,
+        role: 'MEMBER',
+        conversation: {
+          eventId: { not: null },
+          event: { title: { in: bordeauxEventTitles } },
+        },
+      },
+      select: { conversationId: true },
+    });
+
+    for (const { conversationId } of memberships) {
+      await prisma.conversationParticipant.update({
+        where: {
+          userId_conversationId: { userId: account.id, conversationId },
+        },
+        data: { role: 'WRITER' },
+      });
+      promoted++;
+    }
+    console.log(
+      `  ${account.username} <${email}>: WRITER in ${memberships.length} event chat(s).`,
+    );
+  }
+  if (promoted > 0) {
+    console.log(`Granted write access ${promoted} time(s).`);
   }
 
   console.log(`Seeded ${convCount} new conversations with ${msgCount} messages.`);
