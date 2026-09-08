@@ -651,8 +651,12 @@ async function main() {
   // them — GROUP, named after the event, owned by its organizer — because the
   // app has to recognise them as the event's own thread, not as a stray group.
   console.log('Seeding event chats...');
+  // Keyed on the names written in the scripts above, not on what the database
+  // holds. A seeded account renamed in the app keeps its row, and the upsert
+  // further up deliberately leaves `username` alone — so the two drift, and
+  // every line by that speaker quietly found nobody to say it.
   const byUsername = new Map<string, { id: number }>(
-    seedUsers.map((u) => [u.username, { id: u.id }]),
+    SEED_USERS.map((u, i) => [u.username, { id: seedUsers[i].id }]),
   );
   byUsername.set('organizer', { id: organizer.id });
 
@@ -660,18 +664,20 @@ async function main() {
     const script = BORDEAUX_EVENT_CHATS[event.title];
     if (!script) continue;
 
-    // eventId is unique: one event, one thread. Re-running the seed must not
-    // try for a second.
-    const existing = await prisma.conversation.findUnique({
+    // The thread usually exists already: the app opens one the moment somebody
+    // joins the event, so a database that has seen any use has them all — and
+    // all of them empty. Skipping on their existence, rather than on their
+    // contents, is why an earlier version of this seeded nothing at all.
+    const thread = await prisma.conversation.findUnique({
       where: { eventId: event.id },
-      select: { id: true },
+      select: { id: true, _count: { select: { messages: true } } },
     });
-    if (existing) continue;
+    if (thread && thread._count.messages > 0) continue;
 
     const speakers = [...new Set(script.map((m) => m.from))]
       .map((name) => byUsername.get(name))
       .filter((u): u is { id: number } => u !== undefined)
-      .filter((u) => u.id !== organizer.id);
+      .filter((u) => u.id !== event.organizerId);
 
     // Everyone who speaks below has to be at the event and allowed to post:
     // attendees join an event chat read-only, and only the organizer can
@@ -685,21 +691,40 @@ async function main() {
       });
     }
 
-    const conversation = await prisma.conversation.create({
-      data: {
-        type: ConversationType.GROUP,
-        name: event.title,
-        eventId: event.id,
-        ownerId: organizer.id,
-        participants: {
-          create: [
-            { userId: organizer.id, role: 'OWNER' },
-            ...speakers.map((s) => ({ userId: s.id, role: 'WRITER' as const })),
-          ],
+    let conversationId: number;
+    if (thread) {
+      conversationId = thread.id;
+    } else {
+      const created = await prisma.conversation.create({
+        data: {
+          type: ConversationType.GROUP,
+          name: event.title,
+          eventId: event.id,
+          ownerId: event.organizerId,
         },
+        select: { id: true },
+      });
+      conversationId = created.id;
+      convCount++;
+    }
+
+    // Upserts throughout: an existing thread already has its own participants,
+    // and a speaker who is in it as a reader needs promoting rather than
+    // adding a second time.
+    await prisma.conversationParticipant.upsert({
+      where: {
+        userId_conversationId: { userId: event.organizerId, conversationId },
       },
+      create: { userId: event.organizerId, conversationId, role: 'OWNER' },
+      update: { role: 'OWNER' },
     });
-    convCount++;
+    for (const speaker of speakers) {
+      await prisma.conversationParticipant.upsert({
+        where: { userId_conversationId: { userId: speaker.id, conversationId } },
+        create: { userId: speaker.id, conversationId, role: 'WRITER' },
+        update: { role: 'WRITER' },
+      });
+    }
 
     // Anyone else already signed up joins as a reader, which is what the app
     // does for an attendee who has not been given the microphone.
@@ -707,22 +732,29 @@ async function main() {
       where: { eventId: event.id },
       select: { userId: true },
     });
-    const seated = new Set([organizer.id, ...speakers.map((s) => s.id)]);
+    const seated = new Set([event.organizerId, ...speakers.map((s) => s.id)]);
     for (const { userId } of attendees) {
       if (seated.has(userId)) continue;
-      await prisma.conversationParticipant.create({
-        data: { userId, conversationId: conversation.id, role: 'MEMBER' },
+      await prisma.conversationParticipant.upsert({
+        where: { userId_conversationId: { userId, conversationId } },
+        create: { userId, conversationId, role: 'MEMBER' },
+        update: {},
       });
     }
 
     let lastEventMessage: { text: string; createdAt: Date } | null = null;
     for (const m of script) {
       const sender = byUsername.get(m.from);
-      if (!sender) continue;
+      if (!sender) {
+        // Loudly: a missing speaker is a typo in the script above, and
+        // skipping quietly is how two of these went unnoticed.
+        console.warn(`  ! unknown speaker "${m.from}" — message skipped`);
+        continue;
+      }
       const createdAt = new Date(Date.now() - m.minutesAgo * 60_000);
       await prisma.message.create({
         data: {
-          conversationId: conversation.id,
+          conversationId,
           senderId: sender.id,
           text: m.text,
           createdAt,
@@ -734,7 +766,7 @@ async function main() {
 
     if (lastEventMessage) {
       await prisma.conversation.update({
-        where: { id: conversation.id },
+        where: { id: conversationId },
         data: {
           lastMessageText: lastEventMessage.text,
           lastMessageAt: lastEventMessage.createdAt,
