@@ -7,7 +7,10 @@ export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
-    seed: "npx tsx prisma/seed.ts",
+    // ts-node, not tsx: tsx isn't a dependency of this project, so the
+    // generated default made `prisma db seed` fail on a clean install.
+    // Same runner as the `prisma:seed` npm script.
+    seed: "npx ts-node prisma/seed.ts",
   },
   datasource: {
     url: process.env["DIRECT_URL"],

@@ -71,3 +71,63 @@ See [`.env.example`](.env.example) for all required variables.
 | `npm run test` | Run unit tests |
 | `npm run test:e2e` | Run end-to-end tests |
 | `npm run lint` | Lint and auto-fix |
+
+## Deployment (Railway)
+
+[`railway.json`](railway.json) holds the build, migration and start commands, so
+the only thing that has to be clicked in the dashboard is the service itself.
+
+**Set the service's Root Directory to `backend`.** This is a monorepo; without
+it Railway builds from the repository root and finds no `package.json`.
+
+The pipeline it describes:
+
+| Phase | Command | Why |
+|---|---|---|
+| install | `npm ci` (Nixpacks) | `postinstall` runs `prisma generate` — the client isn't in the repo |
+| build | `npm run build` | compiles to `dist/` |
+| pre-deploy | `npx prisma migrate deploy` | applies pending migrations before the new version takes traffic |
+| start | `npm run start:prod` | `node dist/main` |
+
+Health checks hit `/`, which `AppController` answers without touching the
+database — so a failing health check means the process is down, not the DB.
+
+### Variables to set on the service
+
+`PORT` is injected by Railway; don't define it. Everything else comes from
+[`.env.example`](.env.example), which documents each one in full:
+
+| Variable | Notes |
+|---|---|
+| `JWT_SECRET` | ≥ 32 chars, generated for production — never the local one |
+| `DATABASE_URL` | pooled connection (PgBouncer) |
+| `DIRECT_URL` | direct connection, used by `migrate deploy` |
+| `DATABASE_CA_CERT` | see below |
+| `NODE_ENV` | `production` |
+| `CORS_ORIGINS` | only needed if the Expo **web** build is deployed |
+| `RESEND_API_KEY`, `MAIL_FROM` | sender domain must be verified in Resend |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | social login token validation |
+| `EXPO_ACCESS_TOKEN` | optional, only for Expo's enhanced push security |
+
+### Two things that bite on the first deploy
+
+**`DATABASE_CA_CERT` is effectively mandatory in production.** With
+`NODE_ENV=production` and no CA, `PrismaService` verifies the database TLS chain
+against the system trust store and fails closed — the app boots and then dies on
+the first query. Paste the provider's CA (Supabase → Project Settings →
+Database → SSL configuration) as the variable's value, PEM contents and all.
+
+**Dev dependencies must survive the install.** `nest build` comes from
+`@nestjs/cli`, a dev dependency, and `NODE_ENV=production` tells npm to skip
+those. Nixpacks normally forces `NPM_CONFIG_PRODUCTION=false` for the install
+phase; if the build fails on `nest: not found`, set `NPM_CONFIG_INCLUDE=dev` on
+the service.
+
+### After the first deploy
+
+1. Generate a public domain for the service.
+2. Seed the database if it's empty — `npm run prisma:seed`, from the Railway
+   shell or against `DIRECT_URL` locally.
+3. Put the domain in [`mobile/constants/api.ts`](../mobile/constants/api.ts),
+   which still ships a placeholder production URL. It is baked in at build
+   time, so this has to happen before any EAS production build.
