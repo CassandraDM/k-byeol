@@ -17,6 +17,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyResetCodeDto } from './dto/verify-reset-code.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { SocialLoginDto } from './dto/social-login.dto';
+import { ConfirmReactivationDto, ReactivateDto } from './dto/reactivate.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 /**
@@ -67,6 +68,26 @@ export class AuthController {
   resendVerification(@Req() req: Request) {
     const user = req['user'] as { id: number };
     return this.authService.resendVerification(user.id);
+  }
+
+  /**
+   * Both halves of bringing a deleted account back. Unauthenticated by
+   * necessity — the whole point is that its owner cannot sign in — and gated
+   * by a password or a provider session, which puts them in the same guessable
+   * bracket as the rest of this controller.
+   */
+  @Post('reactivate')
+  @Throttle(SENSITIVE)
+  @HttpCode(HttpStatus.OK)
+  reactivate(@Body() dto: ReactivateDto) {
+    return this.authService.requestReactivation(dto);
+  }
+
+  @Post('reactivate/confirm')
+  @Throttle(SENSITIVE)
+  @HttpCode(HttpStatus.OK)
+  confirmReactivation(@Body() dto: ConfirmReactivationDto) {
+    return this.authService.confirmReactivation(dto);
   }
 
   @Post('forgot-password')

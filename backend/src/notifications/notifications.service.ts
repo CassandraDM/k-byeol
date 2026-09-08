@@ -73,7 +73,11 @@ export class NotificationsService {
 
     try {
       const devices = await this.prisma.deviceToken.findMany({
-        where: { userId: { in: targets } },
+        // A deleted account keeps its devices registered so a reactivation
+        // does not cost it its notifications, which means the send has to skip
+        // them itself — a phone whose owner has left the app should not go on
+        // buzzing about it for a month.
+        where: { userId: { in: targets }, user: { deletedAt: null } },
         select: { token: true },
       });
       if (devices.length === 0) return;

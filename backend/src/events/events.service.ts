@@ -126,9 +126,11 @@ export class EventsService {
       select: { hideBlockedEvents: true },
     });
     const hideBlockedEvents = prefs?.hideBlockedEvents ?? true;
+    // Turning the setting off opts out of hiding *blocked* people. A deleted
+    // account is not a preference — its events stay off the map either way.
     const hidden = hideBlockedEvents
       ? await this.moderation.hiddenUserIds(userId)
-      : [];
+      : await this.moderation.deletedUserIds();
 
     // The haversine distance in km, reused by SELECT, WHERE and ORDER BY.
     // `least(1, …)` guards against floating-point drift pushing the argument
@@ -224,11 +226,12 @@ export class EventsService {
       where: { id },
       include: {
         organizer: {
-          select: { id: true, username: true, avatar: true },
+          select: { id: true, username: true, avatar: true, deletedAt: true },
         },
         _count: {
           select: {
-            // Blocked people are invisible, so they must not be counted either.
+            // Blocked and deleted people are invisible, so they must not be
+            // counted either.
             participations: { where: { userId: { notIn: hidden } } },
           },
         },
@@ -239,7 +242,10 @@ export class EventsService {
       },
     });
 
-    if (!event) {
+    // A deleted organizer takes their event with them: the row is still there,
+    // untouched so a reactivation can bring it back, but there is nothing here
+    // to look at until then.
+    if (!event || event.organizer.deletedAt) {
       throw new NotFoundException('Event not found');
     }
 
@@ -254,7 +260,11 @@ export class EventsService {
       time: event.time,
       description: event.description,
       imageUrl: event.imageUrl,
-      organizer: event.organizer,
+      organizer: {
+        id: event.organizer.id,
+        username: event.organizer.username,
+        avatar: event.organizer.avatar,
+      },
       participantCount: event._count.participations,
       isParticipating: event.participations.length > 0,
       createdAt: event.createdAt,
@@ -301,8 +311,11 @@ export class EventsService {
   async participate(userId: number, eventId: number) {
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
+      include: { organizer: { select: { deletedAt: true } } },
     });
-    if (!event) {
+    // Same answer the detail route gives: a deleted organizer's event is not
+    // there to be joined, even by an id typed in directly.
+    if (!event || event.organizer.deletedAt) {
       throw new NotFoundException('Event not found');
     }
 

@@ -37,14 +37,20 @@ const STORED_EVENT = {
   reminderSentAt: null,
   createdAt: new Date('2026-08-01T10:00:00.000Z'),
   updatedAt: new Date('2026-08-01T10:00:00.000Z'),
+  // Reads that surface an event now ask whether its organizer is still around:
+  // a deleted one takes their event off the map without the row moving.
+  organizer: { deletedAt: null },
 };
+
+/** The account row every user lookup resolves to. Reset before each test. */
+let account: { emailVerified: boolean; deletedAt: Date | null };
 
 describe('Events (e2e)', () => {
   let app: INestApplication<App>;
   let jwt: JwtService;
   let prisma: {
     $queryRaw: jest.Mock;
-    user: { findUnique: jest.Mock };
+    user: { findUnique: jest.Mock; findMany: jest.Mock };
     userPreferences: { findUnique: jest.Mock };
     event: {
       create: jest.Mock;
@@ -73,7 +79,13 @@ describe('Events (e2e)', () => {
       $queryRaw: jest.fn().mockResolvedValue([]),
       // Every authenticated user is verified unless a test says otherwise.
       user: {
-        findUnique: jest.fn().mockResolvedValue({ emailVerified: true }),
+        // Two guards read this row now — JwtAuthGuard to rule out a deleted
+        // account, EmailVerifiedGuard to check the verification — so the
+        // fixture is a row a test can bend, not a value keyed on call order.
+        findUnique: jest.fn(() => Promise.resolve(account)),
+        // Asked for the deleted accounts every read has to hide. Nobody here
+        // has left, so the list is empty.
+        findMany: jest.fn().mockResolvedValue([]),
       },
       userPreferences: {
         findUnique: jest.fn().mockResolvedValue({ hideBlockedEvents: true }),
@@ -130,6 +142,7 @@ describe('Events (e2e)', () => {
   // Only the call history is reset: the resolved values configured above are
   // the default fixture, and each test overrides what it needs with `Once`.
   beforeEach(() => {
+    account = { emailVerified: true, deletedAt: null };
     prisma.event.create.mockClear();
     prisma.conversation.create.mockClear();
     prisma.conversationParticipant.create.mockClear();
@@ -384,7 +397,7 @@ describe('Events (e2e)', () => {
 
   describe('authorisation', () => {
     it('refuses event creation to an unverified account (403)', async () => {
-      prisma.user.findUnique.mockResolvedValueOnce({ emailVerified: false });
+      account.emailVerified = false;
 
       await request(app.getHttpServer())
         .post('/events')

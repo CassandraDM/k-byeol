@@ -115,6 +115,47 @@ export class MailService {
   }
 
   /**
+   * The code that brings a deleted account back.
+   *
+   * It goes to the address the account held before it was deleted, which is
+   * the point: that mailbox is the one thing a stranger who guessed the
+   * password still could not reach. The warning at the end matters more here
+   * than anywhere else — an unexpected one of these means somebody is trying
+   * to walk back into an account its owner chose to close.
+   */
+  async sendReactivationCode(
+    to: string,
+    code: string,
+    expiresInMinutes: number,
+  ): Promise<void> {
+    const subject = 'Reactivate your account';
+    const text = [
+      'Welcome back to K-별!',
+      '',
+      'Someone asked to bring your deleted account back.',
+      `Enter this passcode to reactivate it. It will expire in ${expiresInMinutes} minutes.`,
+      '',
+      code,
+      '',
+      'If that was not you, ignore this email — your account stays deleted.',
+      '',
+      'P.S. Sent with love by Nox, our cat and chief email officer',
+    ].join('\n');
+
+    const html = `
+      <div style="font-family: sans-serif; line-height: 1.6; color: #1a1a1a; max-width: 480px;">
+        <h2 style="color: #7A3FB0; margin-bottom: 16px;">Reactivate your account</h2>
+        <p>Welcome back to K-별! Someone asked to bring your deleted account back.</p>
+        <p>Enter this passcode to reactivate it. It will expire in ${expiresInMinutes} minutes.</p>
+        <p style="font-size:34px;font-weight:bold;letter-spacing:8px;color:#7A3FB0;margin:20px 0;">${code}</p>
+        <p style="color:#666;font-size:13px;">If that was not you, ignore this email — your account stays deleted.</p>
+        <p style="color:#999;font-size:12px;margin-top:18px;">P.S. Sent with love by Nox, our cat and chief email officer</p>
+      </div>`;
+
+    await this.deliver(to, subject, text, html, 'reactivation', code);
+  }
+
+  /**
    * Dispatches an email over the configured transport (Resend → SMTP →
    * console), with a single place for the delivery logic.
    */

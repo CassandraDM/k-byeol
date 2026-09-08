@@ -33,5 +33,8 @@ function jwtSecret(): string {
   ],
   controllers: [AuthController],
   providers: [AuthService],
+  // AccountModule leans on assertSocialIdentity to confirm a deletion asked by
+  // a Google or Apple account.
+  exports: [AuthService],
 })
 export class AuthModule {}

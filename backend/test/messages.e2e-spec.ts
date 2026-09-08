@@ -33,7 +33,7 @@ describe('Messages (e2e)', () => {
   let app: INestApplication<App>;
   let jwt: JwtService;
   let prisma: {
-    user: { findUnique: jest.Mock };
+    user: { findUnique: jest.Mock; findMany: jest.Mock };
     message: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock };
     conversationParticipant: { findUnique: jest.Mock };
     conversation: { update: jest.Mock };
@@ -59,6 +59,9 @@ describe('Messages (e2e)', () => {
     prisma = {
       user: {
         findUnique: jest.fn().mockResolvedValue({ emailVerified: true }),
+        // Asked for the deleted accounts every read has to hide. Nobody here
+        // has left, so the list is empty.
+        findMany: jest.fn().mockResolvedValue([]),
       },
       message: {
         findUnique: jest.fn().mockResolvedValue(storedMessage()),

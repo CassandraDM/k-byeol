@@ -22,11 +22,14 @@ const THEM = 2;
 /** A follow row as Prisma hands it back. */
 const EDGE = { createdAt: new Date('2026-08-01T10:00:00.000Z') };
 
+/** Ids the user double treats as absent from the database. Reset per test. */
+let absentUsers: number[] = [];
+
 describe('Follows (e2e)', () => {
   let app: INestApplication<App>;
   let jwt: JwtService;
   let prisma: {
-    user: { findUnique: jest.Mock };
+    user: { findUnique: jest.Mock; findMany: jest.Mock };
     follow: {
       upsert: jest.Mock;
       deleteMany: jest.Mock;
@@ -46,9 +49,19 @@ describe('Follows (e2e)', () => {
   beforeAll(async () => {
     prisma = {
       user: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({ id: THEM, emailVerified: true }),
+        // Answers what is asked rather than what is asked *next*: JwtAuthGuard
+        // now looks the caller up too, so a fixture keyed on call order would
+        // hand the guard the answer meant for the service.
+        findUnique: jest.fn(({ where }: { where: { id: number } }) =>
+          Promise.resolve(
+            absentUsers.includes(where.id)
+              ? null
+              : { id: where.id, emailVerified: true, deletedAt: null },
+          ),
+        ),
+        // Asked for the deleted accounts every read has to hide. Nobody here
+        // has left, so the list is empty.
+        findMany: jest.fn().mockResolvedValue([]),
       },
       follow: {
         upsert: jest.fn().mockResolvedValue({}),
@@ -84,6 +97,7 @@ describe('Follows (e2e)', () => {
   // Only the call history is reset — the resolved values above are the fixture,
   // and each test overrides what it needs with `Once`.
   beforeEach(() => {
+    absentUsers = [];
     prisma.follow.upsert.mockClear();
     prisma.follow.deleteMany.mockClear();
     prisma.follow.findMany.mockClear();
@@ -189,7 +203,7 @@ describe('Follows (e2e)', () => {
     });
 
     it('answers 404 for a user who does not exist', async () => {
-      prisma.user.findUnique.mockResolvedValueOnce(null);
+      absentUsers = [999];
 
       await request(app.getHttpServer())
         .post('/users/999/follow')

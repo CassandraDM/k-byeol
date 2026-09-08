@@ -61,6 +61,84 @@ See [`.env.example`](.env.example) for all required variables.
 | 401 | Wrong credentials |
 | 409 | Email or username already in use |
 
+### Account
+
+Both routes act on the caller and take no id — there is no number in the path
+to point at somebody else's account.
+
+| Method | Route | Description | Body |
+|---|---|---|---|
+| DELETE | `/me` | Delete the current account | `{ password }`, or `{ accessToken }` for a Google / Apple account |
+| GET | `/me/export` | Everything the account holds, as a JSON attachment | — |
+
+Which proof `DELETE /me` accepts follows from the account, not from what the
+caller sends: a social account holds a random password minted at signup that
+its owner has never seen, so it re-authenticates with its provider instead.
+
+#### What deletion does
+
+**It destroys nothing.** `deleted_at` alone hides the account and everything it
+owns, which is what lets a reactivation inside the grace period give it all back
+as it was rather than as a shell. Deleting is one `UPDATE`.
+
+| | |
+|---|---|
+| Hidden, untouched | organised events (and their group chats), participations, conversation memberships, preferences, follows, blocks, devices |
+| Emptied | email, username, avatar, bio — parked in `restore_email` / `restore_username` / `restore_avatar` / `restore_bio` |
+| Destroyed | pending password-reset codes, which would otherwise be a way in that skips reactivation |
+
+Nothing had to learn about deletion twice: `ModerationService.hiddenUserIds`
+already answered "every user id this viewer should no longer see", so deleted
+accounts joined that list and every read that knew how to hide a blocked person
+now hides a departed one. The exceptions are the reads that had no reason to
+consult it — follower counters, an event's detail and its join route, and the
+push sender — which check `deletedAt` themselves.
+
+The email is freed in the same transaction, so **the same address can open a
+new account the very next minute**. Signing in is refused from that moment: the
+address no longer resolves to the row, `AuthService.login` rules out a deleted
+account explicitly, and `JwtAuthGuard` rejects tokens belonging to one — which
+matters, because tokens live seven days and there is no revocation list.
+
+#### Grace period
+
+Thirty days (`GRACE_PERIOD_DAYS` in `account.service.ts`). Nothing the user can
+see changes during it — the account and its contents went dark the moment they
+confirmed. What the window holds open is the possibility of undoing all of it.
+
+`AccountPurgeService` closes it nightly, and that is where a deletion finally
+becomes one: the events, participations, memberships, follows, blocks,
+preferences and devices are destroyed for real, the restore columns are cleared,
+and the password hash is replaced with one nobody holds the input to.
+
+Reactivating means moving the four restore columns back and clearing
+`deleted_at` — everything hidden becomes visible again in the same motion,
+because it never went anywhere.
+
+| Method | Route | Description | Body |
+|---|---|---|---|
+| POST | `/auth/reactivate` | Emails a code, or brings a social account straight back | `{ email, password }` or `{ email, accessToken }` |
+| POST | `/auth/reactivate/confirm` | Finishes it, returns a JWT | `{ email, code }` |
+
+Users do not go looking for these. Signing in with a deleted account's
+credentials answers **409** carrying a `reactivation` object instead of the
+usual 401, and the app turns that into an offer — which is also why the
+password is checked before the offer is made: without that, typing an address
+would reveal whether it ever belonged to anyone.
+
+A social account never sees a code. Its provider has just vouched for the
+address, which is the same proof the emailed code exists to obtain.
+
+Reactivation only works while the address is still free. The email is released
+at deletion so a new account can take it, and whoever takes it wins — the
+attempt then answers 409 and says so. A taken *username* is not fatal: the
+account comes back under a suffixed one.
+
+Messages and reports outlive even the purge. `messages.sender_id` is not
+nullable and those messages belong to conversations other people are still
+reading; reports are about somebody else's behaviour, and moderation would lose
+the trail.
+
 ## Scripts
 
 | Script | Description |

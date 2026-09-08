@@ -169,8 +169,15 @@ export class FollowsService {
   async state(viewerId: number | undefined, profileId: number) {
     const [followerCount, followingCount, outgoing, incoming] =
       await Promise.all([
-        this.prisma.follow.count({ where: { followingId: profileId } }),
-        this.prisma.follow.count({ where: { followerId: profileId } }),
+        // A deleted account still holds its follow rows — they come back if it
+        // is reactivated — so the counters have to leave it out themselves, or
+        // a profile would advertise followers nobody can find in the list.
+        this.prisma.follow.count({
+          where: { followingId: profileId, follower: { deletedAt: null } },
+        }),
+        this.prisma.follow.count({
+          where: { followerId: profileId, following: { deletedAt: null } },
+        }),
         viewerId === undefined || viewerId === profileId
           ? null
           : this.prisma.follow.findUnique({

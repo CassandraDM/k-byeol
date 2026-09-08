@@ -1,4 +1,7 @@
+import { useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,14 +14,25 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { CustomFonts, Palette } from '@/constants/theme';
 import { useAuthStore } from '@/stores/auth-store';
+import { exportMyData } from '@/utils/account';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { signOut } = useAuthStore();
+  const [exporting, setExporting] = useState(false);
 
   const handleLogout = async () => {
     await signOut();
     router.replace('/(auth)/sign-in' as any);
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    const result = await exportMyData();
+    setExporting(false);
+    if (result.status === 'error') {
+      Alert.alert('Export failed', result.message);
+    }
   };
 
   return (
@@ -73,6 +87,43 @@ export default function SettingsScreen() {
             />
           </Pressable>
 
+        </View>
+
+        {/* Your data */}
+        <Text style={styles.sectionTitle}>Your data</Text>
+        <View style={styles.card}>
+          <Pressable
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+            onPress={handleExport}
+            disabled={exporting}>
+            <Ionicons
+              name="download-outline"
+              size={20}
+              color={Palette.purple}
+            />
+            <Text style={styles.rowText}>Export my data</Text>
+            {exporting ? (
+              <ActivityIndicator size="small" color={Palette.purple} />
+            ) : (
+              <Ionicons
+                name="chevron-forward"
+                size={18}
+                color={Palette.purple}
+              />
+            )}
+          </Pressable>
+
+          <View style={styles.rowDivider} />
+
+          <Pressable
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+            onPress={() => router.push('/settings/delete-account' as any)}>
+            <Ionicons name="trash-outline" size={20} color="#E74C3C" />
+            <Text style={[styles.rowText, styles.dangerText]}>
+              Delete my account
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color="#E74C3C" />
+          </Pressable>
         </View>
 
         {/* Log out */}
@@ -149,6 +200,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Palette.purple,
   },
+  rowDivider: {
+    height: 1,
+    marginHorizontal: 16,
+    backgroundColor: 'rgba(207, 126, 242, 0.2)',
+  },
+  dangerText: { color: '#E74C3C' },
   logoutWrap: {
     marginTop: 32,
     alignItems: 'center',

@@ -115,39 +115,71 @@ export class ModerationService {
   }
 
   /**
-   * Every user id `userId` should no longer see, in either direction.
+   * Accounts that have been deleted, and are therefore invisible to everyone.
+   *
+   * Deleting destroys nothing until the grace period runs out — that is what
+   * lets a reactivation give the account back as it was — so what a deleted
+   * account owns is still sitting in the tables. This list is what keeps it off
+   * the screen in the meantime, and dropping an id from it is all a
+   * reactivation has to do to bring everything back.
+   */
+  async deletedUserIds(): Promise<number[]> {
+    const deleted = await this.prisma.user.findMany({
+      where: { deletedAt: { not: null } },
+      select: { id: true },
+    });
+    return deleted.map((u) => u.id);
+  }
+
+  /**
+   * Every user id `userId` should no longer see, whatever the reason.
    *
    * Blocking cuts visibility both ways: the person who blocked stops seeing
    * their target, and the target stops seeing them. A one-way block would let
    * the blocked party keep watching and messaging, which is the behaviour
    * store moderation reviews reject.
+   *
+   * Deleted accounts join the same list rather than getting a mechanism of
+   * their own — every read that already knew how to not show somebody now
+   * hides them too, without being told twice.
    */
   async hiddenUserIds(userId: number): Promise<number[]> {
-    const blocks = await this.prisma.block.findMany({
-      where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
-      select: { blockerId: true, blockedId: true },
-    });
+    const [blocks, deleted] = await Promise.all([
+      this.prisma.block.findMany({
+        where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
+        select: { blockerId: true, blockedId: true },
+      }),
+      this.deletedUserIds(),
+    ]);
 
-    const ids = new Set<number>();
+    const ids = new Set<number>(deleted);
     for (const b of blocks) {
       ids.add(b.blockerId === userId ? b.blockedId : b.blockerId);
     }
     return Array.from(ids);
   }
 
-  /** True when the two users are separated by a block, either way round. */
+  /** True when the other user is deleted, or a block separates the two. */
   async isHidden(userId: number, otherId: number): Promise<boolean> {
     if (userId === otherId) return false;
-    const block = await this.prisma.block.findFirst({
-      where: {
-        OR: [
-          { blockerId: userId, blockedId: otherId },
-          { blockerId: otherId, blockedId: userId },
-        ],
-      },
-      select: { blockerId: true },
-    });
-    return block !== null;
+
+    const [other, block] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: otherId },
+        select: { deletedAt: true },
+      }),
+      this.prisma.block.findFirst({
+        where: {
+          OR: [
+            { blockerId: userId, blockedId: otherId },
+            { blockerId: otherId, blockedId: userId },
+          ],
+        },
+        select: { blockerId: true },
+      }),
+    ]);
+
+    return other?.deletedAt != null || block !== null;
   }
 
   /** The users this user has blocked themselves, for a manage-blocks screen. */

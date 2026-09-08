@@ -15,6 +15,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { ModerationModule } from './moderation/moderation.module';
 import { FollowsModule } from './follows/follows.module';
 import { MessagesModule } from './messages/messages.module';
+import { AccountModule } from './account/account.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { MessagesModule } from './messages/messages.module';
     ModerationModule,
     FollowsModule,
     MessagesModule,
+    AccountModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
