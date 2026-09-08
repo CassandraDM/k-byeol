@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -44,11 +45,13 @@ export default function DeleteAccountScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /**
-   * The confirmation only appears once the button has been pressed. Asking for
-   * a password on arrival reads as a demand made of someone who has not decided
-   * anything yet; asking after the press reads as the step it actually is.
+   * The confirmation is a dialog rather than a field sitting on the page.
+   * Asking for a password on arrival reads as a demand made of somebody who
+   * has not decided anything yet; asking it in a sheet that opens on the press
+   * reads as the step it actually is, and it cannot be half-filled in and
+   * forgotten.
    */
-  const [confirming, setConfirming] = useState(false);
+  const [asking, setAsking] = useState(false);
 
   const method = confirmationMethod(provider);
 
@@ -56,6 +59,12 @@ export default function DeleteAccountScreen() {
   const finish = async () => {
     await signOut();
     router.replace('/(auth)/sign-in' as any);
+  };
+
+  const close = () => {
+    setAsking(false);
+    setPassword('');
+    setError(null);
   };
 
   const runDeletion = async (
@@ -71,11 +80,20 @@ export default function DeleteAccountScreen() {
       return;
     }
 
+    setAsking(false);
     Alert.alert(
       'Account deleted',
       `You can sign up again with the same email whenever you like. If you change your mind about this account, ask us within ${result.gracePeriodDays} days and we can put it back.`,
       [{ text: 'OK', onPress: () => void finish() }],
     );
+  };
+
+  const confirmWithPassword = () => {
+    if (!password) {
+      setError('Enter your password to confirm.');
+      return;
+    }
+    void runDeletion({ password });
   };
 
   /**
@@ -86,13 +104,9 @@ export default function DeleteAccountScreen() {
     setBusy(true);
     setError(null);
     const social = await requestSupabaseAccessToken(provider as SocialProvider);
-    if (social.status === 'cancelled') {
+    if (social.status !== 'ok') {
       setBusy(false);
-      return;
-    }
-    if (social.status === 'error') {
-      setBusy(false);
-      setError(social.message);
+      if (social.status === 'error') setError(social.message);
       return;
     }
     setBusy(false);
@@ -101,149 +115,137 @@ export default function DeleteAccountScreen() {
     await releaseSupabaseSession();
   };
 
-  /**
-   * First press opens the confirmation, second one acts on it. A social
-   * account has nothing to type, so its first press is already the second.
-   */
-  const onPressDelete = () => {
-    if (method === 'password' && !confirming) {
-      setConfirming(true);
-      return;
-    }
-    askToConfirm();
-  };
-
-  /** The last chance to back out, on top of everything above. */
-  const askToConfirm = () => {
-    if (method === 'password' && !password) {
-      setError('Enter your password to confirm.');
-      return;
-    }
-
-    Alert.alert(
-      'Delete your account?',
-      'Nothing here can be undone from the app.',
-      [
-        { text: 'Keep my account', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            if (method === 'password') {
-              void runDeletion({ password });
-            } else {
-              void confirmWithProvider();
-            }
-          },
-        },
-      ],
-    );
-  };
-
   return (
     <LinearGradient colors={PageBackground} style={styles.flex}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}>
-          <View style={styles.header}>
-            <Pressable
-              onPress={() => router.back()}
-              style={styles.iconSlot}
-              hitSlop={8}>
-              <Ionicons name="chevron-back" size={28} color={Palette.purple} />
-            </Pressable>
-            <Text style={styles.headerTitle}>Delete account</Text>
-            <View style={styles.iconSlot} />
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.lead}>This deletes for good:</Text>
-            {CONSEQUENCES.map((line) => (
-              <View key={line} style={styles.bulletRow}>
-                <Ionicons name="close-circle" size={16} color="#E74C3C" />
-                <Text style={styles.bulletText}>{line}</Text>
-              </View>
-            ))}
-
-            <View style={styles.divider} />
-
-            <Text style={styles.note}>
-              Messages you sent stay in other people’s conversations so their
-              threads still make sense, but they stop carrying your name.
-            </Text>
-            <Text style={styles.note}>
-              Your email is freed straight away — you can sign up again with it
-              whenever you like.
-            </Text>
-            <Text style={styles.note}>
-              You’re signed out at once and can’t sign back in. For{' '}
-              {GRACE_PERIOD_DAYS} days we can still put your account back if you
-              ask us to — but not the things listed above, which go now. After{' '}
-              {GRACE_PERIOD_DAYS} days nothing can be undone.
-            </Text>
-          </View>
-
-          {confirming && method === 'password' ? (
-            <View style={styles.card}>
-              <Text style={styles.label}>Confirm with your password</Text>
-              <TextInput
-                style={styles.input}
-                value={password}
-                onChangeText={(t) => {
-                  setPassword(t);
-                  setError(null);
-                }}
-                placeholder="Your password"
-                placeholderTextColor="rgba(207,126,242,0.5)"
-                secureTextEntry
-                autoCapitalize="none"
-                autoComplete="current-password"
-                editable={!busy}
-                autoFocus
-                onSubmitEditing={askToConfirm}
-                returnKeyType="done"
-              />
-            </View>
-          ) : null}
-
-          {method === 'provider' ? (
-            <View style={styles.card}>
-              <Text style={styles.label}>
-                You signed in with {providerLabel(provider)}
-              </Text>
-              <Text style={styles.note}>
-                You’ll be asked to sign in once more, so we know it’s really
-                you.
-              </Text>
-            </View>
-          ) : null}
-
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
           <Pressable
-            style={({ pressed }) => [
-              styles.deleteButton,
-              (pressed || busy) && styles.pressed,
-            ]}
-            onPress={onPressDelete}
-            disabled={busy}>
-            {busy ? (
-              <ActivityIndicator color="#fff" />
+            onPress={() => router.back()}
+            style={styles.iconSlot}
+            hitSlop={8}>
+            <Ionicons name="chevron-back" size={28} color={Palette.purple} />
+          </Pressable>
+          <Text style={styles.headerTitle}>Delete account</Text>
+          <View style={styles.iconSlot} />
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.lead}>This deletes for good:</Text>
+          {CONSEQUENCES.map((line) => (
+            <View key={line} style={styles.bulletRow}>
+              <Ionicons name="close-circle" size={16} color="#E74C3C" />
+              <Text style={styles.bulletText}>{line}</Text>
+            </View>
+          ))}
+
+          <View style={styles.divider} />
+
+          <Text style={styles.note}>
+            Messages you sent stay in other people’s conversations so their
+            threads still make sense, but they stop carrying your name.
+          </Text>
+          <Text style={styles.note}>
+            You’re signed out at once and can’t sign back in. For{' '}
+            {GRACE_PERIOD_DAYS} days we can still put your account back if you
+            ask us to — but not the things listed above, which go now. After{' '}
+            {GRACE_PERIOD_DAYS} days nothing can be undone.
+          </Text>
+        </View>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.deleteButton,
+            pressed && styles.pressed,
+          ]}
+          onPress={() => setAsking(true)}>
+          <Ionicons name="trash-outline" size={20} color="#fff" />
+          <Text style={styles.deleteText}>Delete my account</Text>
+        </Pressable>
+      </ScrollView>
+
+      <Modal
+        visible={asking}
+        transparent
+        animationType="fade"
+        // Android's hardware back and iOS's swipe both mean "not this".
+        onRequestClose={close}>
+        <KeyboardAvoidingView
+          style={styles.backdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.dialog}>
+            {method === 'password' ? (
+              <>
+                <Text style={styles.dialogTitle}>
+                  Confirm with your password
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  value={password}
+                  onChangeText={(t) => {
+                    setPassword(t);
+                    setError(null);
+                  }}
+                  placeholder="Your password"
+                  placeholderTextColor="rgba(207,126,242,0.5)"
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoComplete="current-password"
+                  editable={!busy}
+                  autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={confirmWithPassword}
+                />
+              </>
             ) : (
               <>
-                <Ionicons name="trash-outline" size={20} color="#fff" />
-                <Text style={styles.deleteText}>
-                  {confirming ? 'Confirm deletion' : 'Delete my account'}
+                <Text style={styles.dialogTitle}>
+                  Sign in with {providerLabel(provider)} to confirm
+                </Text>
+                <Text style={styles.note}>
+                  You’ll be asked to sign in once more, so we know it’s really
+                  you.
                 </Text>
               </>
             )}
-          </Pressable>
-        </ScrollView>
-      </KeyboardAvoidingView>
+
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+
+            <View style={styles.dialogActions}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.dialogButton,
+                  styles.cancelButton,
+                  pressed && styles.pressed,
+                ]}
+                onPress={close}
+                disabled={busy}>
+                <Text style={styles.cancelText}>Keep my account</Text>
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.dialogButton,
+                  styles.confirmButton,
+                  (pressed || busy) && styles.pressed,
+                ]}
+                onPress={
+                  method === 'password'
+                    ? confirmWithPassword
+                    : () => void confirmWithProvider()
+                }
+                disabled={busy}>
+                {busy ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.confirmText}>Delete</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -306,29 +308,6 @@ const styles = StyleSheet.create({
     color: '#6B5478',
     lineHeight: 19,
   },
-  label: {
-    fontFamily: CustomFonts.moyamoya,
-    fontSize: 15,
-    color: Palette.purple,
-  },
-  input: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(207, 126, 242, 0.3)',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontFamily: CustomFonts.outfit,
-    fontSize: 15,
-    color: Palette.input,
-  },
-  error: {
-    marginTop: 14,
-    fontFamily: CustomFonts.outfit,
-    fontSize: 13,
-    color: '#C0392B',
-    textAlign: 'center',
-  },
   deleteButton: {
     marginTop: 24,
     flexDirection: 'row',
@@ -345,6 +324,66 @@ const styles = StyleSheet.create({
     fontFamily: CustomFonts.syongsyong,
     color: '#fff',
     fontSize: 18,
+    letterSpacing: 0.3,
+  },
+
+  // ── Confirmation dialog ──────────────────────────────────────────────────
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(40, 20, 55, 0.45)',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  dialog: {
+    backgroundColor: '#F7F2FF',
+    borderRadius: 20,
+    padding: 20,
+    gap: 12,
+  },
+  dialogTitle: {
+    fontFamily: CustomFonts.moyamoya,
+    fontSize: 17,
+    color: Palette.purple,
+    lineHeight: 24,
+  },
+  input: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(207, 126, 242, 0.3)',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontFamily: CustomFonts.outfit,
+    fontSize: 15,
+    color: Palette.input,
+  },
+  error: {
+    fontFamily: CustomFonts.outfit,
+    fontSize: 13,
+    color: '#C0392B',
+  },
+  dialogActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  dialogButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  cancelButton: {
+    backgroundColor: 'rgba(207, 126, 242, 0.12)',
+  },
+  cancelText: {
+    fontFamily: CustomFonts.outfit,
+    fontSize: 14,
+    color: Palette.purple,
+  },
+  confirmButton: { backgroundColor: '#E74C3C' },
+  confirmText: {
+    fontFamily: CustomFonts.syongsyong,
+    fontSize: 16,
+    color: '#fff',
     letterSpacing: 0.3,
   },
   pressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },

@@ -132,7 +132,11 @@ export type ExportResult =
  */
 async function loadSharing(): Promise<typeof import('expo-sharing') | null> {
   try {
-    return await import('expo-sharing');
+    const mod = await import('expo-sharing');
+    // Metro's async require does not reject when the native module is missing:
+    // it logs, and hands back a half-built module whose functions are
+    // undefined. So the shape is what gets checked, not the throw.
+    return typeof mod?.isAvailableAsync === 'function' ? mod : null;
   } catch {
     return null;
   }
@@ -169,7 +173,8 @@ export async function exportMyData(): Promise<ExportResult> {
           'This build can’t open the share sheet yet. Rebuild the app to export your data.',
       };
     }
-    if (!(await Sharing.isAvailableAsync())) {
+    const canShare = await Sharing.isAvailableAsync().catch(() => false);
+    if (!canShare) {
       return {
         status: 'error',
         message: 'Sharing isn’t available on this device.',
