@@ -3,6 +3,10 @@
 /node_modules
 /build
 
+# Incremental build cache. It sits next to tsconfig.build.json rather than in
+# dist/, because the build's rootDir is src/ and tsc puts it outside outDir.
+*.tsbuildinfo
+
 # Logs
 logs
 *.log

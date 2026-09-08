@@ -43,6 +43,10 @@ async function bootstrap() {
     }),
   );
 
-  await app.listen(process.env.PORT ?? 3000);
+  // Bind every interface, not just the loopback: on a container platform
+  // (Railway) the request arrives from outside the container's own network
+  // namespace, so a process listening on 127.0.0.1 is unreachable and the
+  // health check fails. PORT is injected by the platform.
+  await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
 }
 void bootstrap();
