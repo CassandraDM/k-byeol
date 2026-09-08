@@ -5,7 +5,12 @@
     // root is the whole backend/ folder — because prisma.config.ts, scripts/
     // and prisma/seed.ts sit next to src/ — and the entry point lands at
     // dist/src/main.js while `start:prod` looks for dist/main.js.
-    "rootDir": "./src"
+    "rootDir": "./src",
+    // Keep the incremental cache inside outDir. Pinning rootDir moved it up to
+    // backend/, out of reach of the CLI's deleteOutDir — so a wiped dist/ left
+    // a cache claiming everything was still emitted, and the next build wrote
+    // only the files that had changed. Back in dist/, the two are wiped as one.
+    "tsBuildInfoFile": "./dist/tsconfig.build.tsbuildinfo"
   },
   "exclude": [
     "node_modules",

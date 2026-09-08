@@ -43,10 +43,12 @@ async function bootstrap() {
     }),
   );
 
-  // Bind every interface, not just the loopback: on a container platform
-  // (Railway) the request arrives from outside the container's own network
-  // namespace, so a process listening on 127.0.0.1 is unreachable and the
-  // health check fails. PORT is injected by the platform.
-  await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
+  // '::' is what Node binds when no host is given, and on Linux it is
+  // dual-stack — IPv6 plus IPv4-mapped addresses. Passing '0.0.0.0' instead
+  // narrows the socket to IPv4 only, which a platform routing over IPv6
+  // internally (Railway) cannot reach: the health check still passes and the
+  // public domain answers "Application failed to respond". Spelled out rather
+  // than left implicit so nobody "fixes" it back to 0.0.0.0.
+  await app.listen(process.env.PORT ?? 3000, '::');
 }
 void bootstrap();
