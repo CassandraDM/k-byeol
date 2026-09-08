@@ -37,6 +37,9 @@ const STORED_EVENT = {
   reminderSentAt: null,
   createdAt: new Date('2026-08-01T10:00:00.000Z'),
   updatedAt: new Date('2026-08-01T10:00:00.000Z'),
+  // Reads that surface an event now ask whether its organizer is still around:
+  // a deleted one takes their event off the map without the row moving.
+  organizer: { deletedAt: null },
 };
 
 /** The account row every user lookup resolves to. Reset before each test. */
@@ -80,6 +83,9 @@ describe('Events (e2e)', () => {
         // account, EmailVerifiedGuard to check the verification — so the
         // fixture is a row a test can bend, not a value keyed on call order.
         findUnique: jest.fn(() => Promise.resolve(account)),
+        // Asked for the deleted accounts every read has to hide. Nobody here
+        // has left, so the list is empty.
+        findMany: jest.fn().mockResolvedValue([]),
       },
       userPreferences: {
         findUnique: jest.fn().mockResolvedValue({ hideBlockedEvents: true }),

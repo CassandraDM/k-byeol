@@ -25,17 +25,22 @@ model User {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  /// Set when the account is deleted. The row itself survives so the messages
-  /// this user sent keep an author and the threads they are in stay readable;
-  /// what leaves immediately is the identity, not the record.
+  /// Set when the account is deleted. Nothing is destroyed at that point: this
+  /// one column is what hides the account and everything it owns, so putting it
+  /// back is a matter of clearing it again. The purge sweep is what eventually
+  /// makes the deletion real.
   deletedAt DateTime? @map("deleted_at")
-  /// The email and username the account held before deletion. They move here
-  /// so `email` and `username` are freed at once — the same address can open a
-  /// new account the very next minute — while support can still put the
-  /// account back during the grace period. Clearing these two columns is what
-  /// makes a deletion irreversible, and it is all the purge sweep does.
+  /// Everything the account showed of itself, parked while it is deleted.
+  ///
+  /// The live columns are emptied so `email` and `username` are free at once —
+  /// the same address can open a new account the very next minute — and so no
+  /// list has to remember to blank out a deleted user's name or face. Putting
+  /// these four back is the whole of a reactivation; clearing them is the whole
+  /// of the purge.
   restoreEmail    String? @map("restore_email") @db.VarChar(100)
   restoreUsername String? @map("restore_username") @db.VarChar(50)
+  restoreAvatar   String? @map("restore_avatar") @db.VarChar(255)
+  restoreBio      String? @map("restore_bio")
 
   preferences     UserPreferences?
   organizedEvents Event[]              @relation("OrganizedEvents")

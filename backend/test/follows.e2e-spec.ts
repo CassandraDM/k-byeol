@@ -59,6 +59,9 @@ describe('Follows (e2e)', () => {
               : { id: where.id, emailVerified: true, deletedAt: null },
           ),
         ),
+        // Asked for the deleted accounts every read has to hide. Nobody here
+        // has left, so the list is empty.
+        findMany: jest.fn().mockResolvedValue([]),
       },
       follow: {
         upsert: jest.fn().mockResolvedValue({}),

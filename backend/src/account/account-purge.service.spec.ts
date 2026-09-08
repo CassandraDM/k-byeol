@@ -13,15 +13,45 @@ const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000);
 describe('AccountPurgeService', () => {
   let service: AccountPurgeService;
   let prisma: {
+    $transaction: jest.Mock;
     user: { findMany: jest.Mock; update: jest.Mock };
+    event: { deleteMany: jest.Mock };
+    eventParticipation: { deleteMany: jest.Mock };
+    conversationParticipant: { deleteMany: jest.Mock };
+    follow: { deleteMany: jest.Mock };
+    block: { deleteMany: jest.Mock };
+    userPreferences: { deleteMany: jest.Mock };
+    deviceToken: { deleteMany: jest.Mock };
+    passwordResetToken: { deleteMany: jest.Mock };
+    emailVerificationToken: { deleteMany: jest.Mock };
+    groupRequest: { deleteMany: jest.Mock };
+    message: { deleteMany: jest.Mock };
+    report: { deleteMany: jest.Mock };
   };
 
   beforeEach(() => {
+    const collection = () => ({
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+    });
+
     prisma = {
+      $transaction: jest.fn().mockResolvedValue([]),
       user: {
         findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn().mockResolvedValue({}),
       },
+      event: collection(),
+      eventParticipation: collection(),
+      conversationParticipant: collection(),
+      follow: collection(),
+      block: collection(),
+      userPreferences: collection(),
+      deviceToken: collection(),
+      passwordResetToken: collection(),
+      emailVerificationToken: collection(),
+      groupRequest: collection(),
+      message: collection(),
+      report: collection(),
     };
     service = new AccountPurgeService(prisma as unknown as PrismaService);
   });
@@ -48,7 +78,45 @@ describe('AccountPurgeService', () => {
     expect(where.restoreEmail).toEqual({ not: null });
   });
 
-  it('clears what a restore would have needed, and nothing else', async () => {
+  it('destroys what the deletion only hid', async () => {
+    prisma.user.findMany.mockResolvedValue([{ id: 4 }]);
+
+    await service.purgeExpiredAccounts();
+
+    expect(prisma.event.deleteMany).toHaveBeenCalledWith({
+      where: { organizerId: 4 },
+    });
+    expect(prisma.eventParticipation.deleteMany).toHaveBeenCalledWith({
+      where: { userId: 4 },
+    });
+    expect(prisma.conversationParticipant.deleteMany).toHaveBeenCalledWith({
+      where: { userId: 4 },
+    });
+    // Cut both ways: a follow or a block names two people.
+    expect(prisma.follow.deleteMany).toHaveBeenCalledWith({
+      where: { OR: [{ followerId: 4 }, { followingId: 4 }] },
+    });
+    expect(prisma.block.deleteMany).toHaveBeenCalledWith({
+      where: { OR: [{ blockerId: 4 }, { blockedId: 4 }] },
+    });
+    expect(prisma.deviceToken.deleteMany).toHaveBeenCalled();
+    expect(prisma.userPreferences.deleteMany).toHaveBeenCalled();
+    // All of it or none of it.
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the messages and the reports', async () => {
+    prisma.user.findMany.mockResolvedValue([{ id: 4 }]);
+
+    await service.purgeExpiredAccounts();
+
+    // Messages belong to conversations other people are still reading, and
+    // sender_id is not nullable. Reports are about somebody else's behaviour.
+    expect(prisma.message.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.report.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('clears what a reactivation would have needed', async () => {
     prisma.user.findMany.mockResolvedValue([{ id: 4 }]);
 
     await service.purgeExpiredAccounts();
@@ -60,10 +128,12 @@ describe('AccountPurgeService', () => {
     expect(where).toEqual({ id: 4 });
     expect(data.restoreEmail).toBeNull();
     expect(data.restoreUsername).toBeNull();
+    expect(data.restoreAvatar).toBeNull();
+    expect(data.restoreBio).toBeNull();
     // A hash of something nobody holds: the row survives for the messages that
     // point at it, but it can never become a way in again.
     expect(data.password).toEqual(expect.any(String));
-    // The row itself stays — its messages are other people's threads.
+    // The row itself stays, and stays marked deleted.
     expect(data).not.toHaveProperty('deletedAt');
   });
 

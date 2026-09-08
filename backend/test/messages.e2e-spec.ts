@@ -59,6 +59,9 @@ describe('Messages (e2e)', () => {
     prisma = {
       user: {
         findUnique: jest.fn().mockResolvedValue({ emailVerified: true }),
+        // Asked for the deleted accounts every read has to hide. Nobody here
+        // has left, so the list is empty.
+        findMany: jest.fn().mockResolvedValue([]),
       },
       message: {
         findUnique: jest.fn().mockResolvedValue(storedMessage()),

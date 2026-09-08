@@ -160,58 +160,37 @@ describe('AccountService', () => {
     expect(email).toContain(`deleted+${USER_ID}.`);
   });
 
-  it('takes their listings, participations and social graph with it', async () => {
+  it('destroys nothing at all', async () => {
     await service.deleteAccount(USER_ID, { password: PASSWORD });
 
-    expect(prisma.event.deleteMany).toHaveBeenCalledWith({
-      where: { organizerId: USER_ID },
-    });
-    expect(prisma.eventParticipation.deleteMany).toHaveBeenCalledWith({
-      where: { userId: USER_ID },
-    });
-    expect(prisma.conversationParticipant.deleteMany).toHaveBeenCalledWith({
-      where: { userId: USER_ID },
-    });
-    // Cut both ways: a follow or a block names two people.
-    expect(prisma.follow.deleteMany).toHaveBeenCalledWith({
-      where: {
-        OR: [{ followerId: USER_ID }, { followingId: USER_ID }],
-      },
-    });
-    expect(prisma.block.deleteMany).toHaveBeenCalledWith({
-      where: { OR: [{ blockerId: USER_ID }, { blockedId: USER_ID }] },
-    });
+    // The whole point: everything the account owns stays exactly where it is,
+    // so reactivating inside the grace period gives it back as it was rather
+    // than as a shell. Destroying is the purge sweep's job, thirty days later.
+    for (const model of [
+      prisma.event,
+      prisma.eventParticipation,
+      prisma.conversationParticipant,
+      prisma.follow,
+      prisma.block,
+      prisma.userPreferences,
+      prisma.deviceToken,
+      prisma.emailVerificationToken,
+      prisma.groupRequest,
+      prisma.message,
+      prisma.report,
+    ]) {
+      expect(model.deleteMany).not.toHaveBeenCalled();
+    }
   });
 
-  it('destroys everything that could still authenticate', async () => {
+  it('revokes pending reset codes, which are the one way back in', async () => {
     await service.deleteAccount(USER_ID, { password: PASSWORD });
 
-    expect(prisma.deviceToken.deleteMany).toHaveBeenCalled();
-    expect(prisma.passwordResetToken.deleteMany).toHaveBeenCalled();
-    expect(prisma.emailVerificationToken.deleteMany).toHaveBeenCalled();
-    expect(prisma.userPreferences.deleteMany).toHaveBeenCalled();
-  });
-
-  it('leaves the messages alone', async () => {
-    await service.deleteAccount(USER_ID, { password: PASSWORD });
-
-    // They belong to conversations other people are still reading. The author
-    // is anonymised by the identity swap above; the text stays put.
-    expect(prisma.message.deleteMany).not.toHaveBeenCalled();
-  });
-
-  it('leaves the reports they filed standing', async () => {
-    await service.deleteAccount(USER_ID, { password: PASSWORD });
-
-    // Those are about somebody else's behaviour — moderation would lose the
-    // trail if the reporter leaving erased them.
-    expect(prisma.report.deleteMany).not.toHaveBeenCalled();
-  });
-
-  it('does all of it in one transaction', async () => {
-    await service.deleteAccount(USER_ID, { password: PASSWORD });
-
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    // A code minted before the deletion would let somebody set a password on a
+    // deleted account and walk straight past reactivation.
+    expect(prisma.passwordResetToken.deleteMany).toHaveBeenCalledWith({
+      where: { userId: USER_ID, usedAt: null },
+    });
   });
 
   // ── Export ───────────────────────────────────────────────────────────────

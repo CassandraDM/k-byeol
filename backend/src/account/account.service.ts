@@ -41,16 +41,19 @@ export class AccountService {
   /**
    * Deletes the current account.
    *
-   * The row is kept and its identity is emptied, rather than the row being
-   * dropped: `messages.sender_id` is not nullable, so destroying the account
-   * would take every message it ever sent with it and punch holes in
-   * conversations belonging to other people. Keeping the row lets those threads
-   * stay readable under a name that identifies nobody.
+   * Nothing is destroyed here. Everything the account owns — the events it
+   * organised, its participations, memberships, follows, preferences — stays
+   * exactly where it is and simply stops being visible, because every read that
+   * could surface it now rules out a deleted owner. That is what makes
+   * reactivating inside the grace period give the account back as it was
+   * rather than as a shell, and it is why this is one UPDATE rather than a
+   * dozen deletes. The destruction happens once, at the end of the grace
+   * period, in AccountPurgeService.
    *
-   * Everything that is the user's alone goes now — the events they organised,
-   * their participations, preferences, follows, blocks, devices, pending
-   * tokens. The email and username are freed in the same transaction, so the
-   * address is available to a new signup immediately.
+   * What does leave immediately is the identity. `email` and `username` are
+   * emptied so the address is free for a new signup the very next minute, and
+   * the avatar and bio go with them so no list has to remember to blank out a
+   * deleted user's name or face. All four are parked in the restore columns.
    */
   async deleteAccount(userId: number, dto?: DeleteAccountDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -63,50 +66,30 @@ export class AccountService {
     const deletedAt = new Date();
     const { email, username } = await this.reserveIdentity(userId);
 
-    await this.prisma.$transaction([
-      // Free the identity first, keeping the originals where only the purge
-      // sweep can reach them. This is the whole of what a restore undoes.
-      this.prisma.user.update({
-        where: { id: userId },
-        data: {
-          deletedAt,
-          restoreEmail: user.email,
-          restoreUsername: user.username,
-          email,
-          username,
-          avatar: null,
-          bio: null,
-        },
-      }),
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        deletedAt,
+        restoreEmail: user.email,
+        restoreUsername: user.username,
+        restoreAvatar: user.avatar,
+        restoreBio: user.bio,
+        email,
+        username,
+        avatar: null,
+        bio: null,
+      },
+    });
 
-      // Their listings. Deleting an event takes its group chat with it, the
-      // same as cancelling one does — the thread has nothing left to be about.
-      this.prisma.event.deleteMany({ where: { organizerId: userId } }),
-
-      // Everywhere they had signed up to be.
-      this.prisma.eventParticipation.deleteMany({ where: { userId } }),
-      this.prisma.conversationParticipant.deleteMany({ where: { userId } }),
-
-      // The social graph, cut from both sides.
-      this.prisma.follow.deleteMany({
-        where: { OR: [{ followerId: userId }, { followingId: userId }] },
-      }),
-      this.prisma.block.deleteMany({
-        where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
-      }),
-
-      // Personal data and anything that could still authenticate.
-      this.prisma.userPreferences.deleteMany({ where: { userId } }),
-      this.prisma.deviceToken.deleteMany({ where: { userId } }),
-      this.prisma.passwordResetToken.deleteMany({ where: { userId } }),
-      this.prisma.emailVerificationToken.deleteMany({ where: { userId } }),
-      this.prisma.groupRequest.deleteMany({ where: { userId } }),
-    ]);
+    // Pending tokens are the one exception: a reset code minted before the
+    // deletion would be a way back in that skips reactivation entirely, and it
+    // is worth nothing to anybody afterwards.
+    await this.prisma.passwordResetToken.deleteMany({
+      where: { userId, usedAt: null },
+    });
 
     return {
       deletedAt,
-      // Reports this account filed are deliberately left standing: they are
-      // about someone else's behaviour, and moderation would lose the trail.
       gracePeriodDays: GRACE_PERIOD_DAYS,
       message:
         'Your account has been deleted. You can sign up again with the same ' +

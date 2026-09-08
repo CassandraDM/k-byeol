@@ -158,7 +158,8 @@ describe('Account (e2e)', () => {
       .send({ password: PASSWORD })
       .expect(200);
 
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    // One UPDATE and nothing else: deleting hides, it does not destroy.
+    expect(prisma.user.update).toHaveBeenCalledTimes(1);
     expect(res.body).toEqual(
       expect.objectContaining({
         gracePeriodDays: expect.any(Number) as number,

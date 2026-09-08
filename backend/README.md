@@ -77,16 +77,22 @@ its owner has never seen, so it re-authenticates with its provider instead.
 
 #### What deletion does
 
-The row survives and its identity is emptied. Dropping it is not an option:
-`messages.sender_id` is not nullable, so destroying the account would take
-every message it ever sent with it and punch holes in conversations belonging
-to other people.
+**It destroys nothing.** `deleted_at` alone hides the account and everything it
+owns, which is what lets a reactivation inside the grace period give it all back
+as it was rather than as a shell. Deleting is one `UPDATE`.
 
 | | |
 |---|---|
-| Deleted outright | organised events (and their group chats), participations, conversation memberships, preferences, follows, blocks, devices, pending tokens |
-| Emptied | email, username, avatar, bio — the originals move to `restore_email` / `restore_username` |
-| Kept | messages, whose author is now nobody; reports the account filed, which are about somebody else's behaviour |
+| Hidden, untouched | organised events (and their group chats), participations, conversation memberships, preferences, follows, blocks, devices |
+| Emptied | email, username, avatar, bio — parked in `restore_email` / `restore_username` / `restore_avatar` / `restore_bio` |
+| Destroyed | pending password-reset codes, which would otherwise be a way in that skips reactivation |
+
+Nothing had to learn about deletion twice: `ModerationService.hiddenUserIds`
+already answered "every user id this viewer should no longer see", so deleted
+accounts joined that list and every read that knew how to hide a blocked person
+now hides a departed one. The exceptions are the reads that had no reason to
+consult it — follower counters, an event's detail and its join route, and the
+push sender — which check `deletedAt` themselves.
 
 The email is freed in the same transaction, so **the same address can open a
 new account the very next minute**. Signing in is refused from that moment: the
@@ -97,19 +103,24 @@ matters, because tokens live seven days and there is no revocation list.
 #### Grace period
 
 Thirty days (`GRACE_PERIOD_DAYS` in `account.service.ts`). Nothing the user can
-see changes during it — their identity left the moment they confirmed. What the
-window holds open is the possibility of putting the account back, and a bounded
-period in which a report filed against it can still be acted on.
+see changes during it — the account and its contents went dark the moment they
+confirmed. What the window holds open is the possibility of undoing all of it.
 
-`AccountPurgeService` closes it nightly: the two restore columns are cleared
-and the password hash is replaced with one nobody holds the input to, so the
-row can never become a way in again.
+`AccountPurgeService` closes it nightly, and that is where a deletion finally
+becomes one: the events, participations, memberships, follows, blocks,
+preferences and devices are destroyed for real, the restore columns are cleared,
+and the password hash is replaced with one nobody holds the input to.
 
-Restoring inside the window means moving `restore_email` / `restore_username`
-back and clearing `deleted_at`. There is no endpoint for it — there is no
-back-office yet — so it is a support operation against the database, and it
-only works if the address has not been claimed by a new account in the
-meantime.
+Reactivating inside the window means moving the four restore columns back and
+clearing `deleted_at` — everything hidden becomes visible again in the same
+motion, because it never went anywhere. It only works while the address is
+still free: the email is released at deletion so a new account can take it, and
+whoever takes it wins.
+
+Messages and reports outlive even the purge. `messages.sender_id` is not
+nullable and those messages belong to conversations other people are still
+reading; reports are about somebody else's behaviour, and moderation would lose
+the trail.
 
 ## Scripts
 
