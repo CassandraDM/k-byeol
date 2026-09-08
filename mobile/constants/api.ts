@@ -8,7 +8,7 @@ import { Platform } from 'react-native';
  *                      (the same IP the phone already uses to load the app bundle)
  * - Android emulator → 10.0.2.2  (maps to host machine)
  * - iOS simulator    → localhost
- * - Production       → set your deployed URL below
+ * - Production       → the API deployed on Railway
  */
 function getDevUrl(): string {
   // Expo stores the dev server address (e.g. "192.168.1.42:8081") in hostUri.
@@ -28,4 +28,13 @@ function getDevUrl(): string {
     : 'http://localhost:3000';
 }
 
-export const API_URL = __DEV__ ? getDevUrl() : 'https://your-production-url.com'; // TODO: set prod URL
+/**
+ * Base URL for both the REST calls and the socket.io connection — the gateway
+ * shares the API's HTTP server, so it lives on the same origin.
+ *
+ * The production value is baked in at build time, not read at runtime: an EAS
+ * build made before this line was set would ship an app that reaches nothing.
+ */
+export const API_URL = __DEV__
+  ? getDevUrl()
+  : 'https://k-byeol-production.up.railway.app';
