@@ -42,6 +42,12 @@ export default function DeleteAccountScreen() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * The confirmation only appears once the button has been pressed. Asking for
+   * a password on arrival reads as a demand made of someone who has not decided
+   * anything yet; asking after the press reads as the step it actually is.
+   */
+  const [confirming, setConfirming] = useState(false);
 
   const method = confirmationMethod(provider);
 
@@ -92,6 +98,18 @@ export default function DeleteAccountScreen() {
     await runDeletion({ accessToken: social.accessToken });
     // The token has done its job either way.
     await releaseSupabaseSession();
+  };
+
+  /**
+   * First press opens the confirmation, second one acts on it. A social
+   * account has nothing to type, so its first press is already the second.
+   */
+  const onPressDelete = () => {
+    if (method === 'password' && !confirming) {
+      setConfirming(true);
+      return;
+    }
+    askToConfirm();
   };
 
   /** The last chance to back out, on top of everything above. */
@@ -162,7 +180,7 @@ export default function DeleteAccountScreen() {
             </Text>
           </View>
 
-          {method === 'password' ? (
+          {confirming && method === 'password' ? (
             <View style={styles.card}>
               <Text style={styles.label}>Confirm with your password</Text>
               <TextInput
@@ -178,9 +196,14 @@ export default function DeleteAccountScreen() {
                 autoCapitalize="none"
                 autoComplete="current-password"
                 editable={!busy}
+                autoFocus
+                onSubmitEditing={askToConfirm}
+                returnKeyType="done"
               />
             </View>
-          ) : (
+          ) : null}
+
+          {method === 'provider' ? (
             <View style={styles.card}>
               <Text style={styles.label}>
                 You signed in with {providerLabel(provider)}
@@ -190,7 +213,7 @@ export default function DeleteAccountScreen() {
                 you.
               </Text>
             </View>
-          )}
+          ) : null}
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -199,20 +222,18 @@ export default function DeleteAccountScreen() {
               styles.deleteButton,
               (pressed || busy) && styles.pressed,
             ]}
-            onPress={askToConfirm}
+            onPress={onPressDelete}
             disabled={busy}>
             {busy ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <>
                 <Ionicons name="trash-outline" size={20} color="#fff" />
-                <Text style={styles.deleteText}>Delete my account</Text>
+                <Text style={styles.deleteText}>
+                  {confirming ? 'Confirm deletion' : 'Delete my account'}
+                </Text>
               </>
             )}
-          </Pressable>
-
-          <Pressable onPress={() => router.back()} disabled={busy}>
-            <Text style={styles.cancel}>Keep my account</Text>
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -318,13 +339,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     letterSpacing: 0.3,
-  },
-  cancel: {
-    marginTop: 18,
-    textAlign: 'center',
-    fontFamily: CustomFonts.outfit,
-    fontSize: 14,
-    color: Palette.purple,
   },
   pressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
 });
