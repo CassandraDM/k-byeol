@@ -109,7 +109,12 @@ database — so a failing health check means the process is down, not the DB.
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | social login token validation |
 | `EXPO_ACCESS_TOKEN` | optional, only for Expo's enhanced push security |
 
-### Two things that bite on the first deploy
+### Three things that bite on the first deploy
+
+**The Node version has to be pinned.** Nixpacks defaults to Node 18, and
+Prisma 7 refuses to install on anything below 20.19 — the build dies in
+`npm ci`, before a single line of this project is compiled. `engines.node` in
+`package.json` and [`.nvmrc`](.nvmrc) both say 22, the same version CI runs.
 
 **`DATABASE_CA_CERT` is effectively mandatory in production.** With
 `NODE_ENV=production` and no CA, `PrismaService` verifies the database TLS chain
