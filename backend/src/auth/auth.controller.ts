@@ -19,6 +19,7 @@ import { VerifyEmailDto } from './dto/verify-email.dto';
 import { SocialLoginDto } from './dto/social-login.dto';
 import { ConfirmReactivationDto, ReactivateDto } from './dto/reactivate.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 /**
  * Everything here either creates an account or checks a secret the caller
@@ -30,22 +31,26 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 const SENSITIVE = { default: { ttl: 60_000, limit: 10 } };
 
 @Controller('auth')
+@ApiTags('Auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
+  @ApiOperation({ summary: 'Create an account' })
   @Throttle(SENSITIVE)
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
   @Post('login')
+  @ApiOperation({ summary: 'Sign in with an email and password' })
   @Throttle(SENSITIVE)
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
 
   @Post('social')
+  @ApiOperation({ summary: 'Sign in with Google or Apple' })
   @Throttle(SENSITIVE)
   @HttpCode(HttpStatus.OK)
   social(@Body() dto: SocialLoginDto) {
@@ -53,6 +58,7 @@ export class AuthController {
   }
 
   @Post('verify-email')
+  @ApiOperation({ summary: 'Confirm an email address with its 6-digit code' })
   @Throttle(SENSITIVE)
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
@@ -62,6 +68,7 @@ export class AuthController {
   }
 
   @Post('resend-verification')
+  @ApiOperation({ summary: 'Send a fresh email-verification code' })
   @Throttle(SENSITIVE)
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
@@ -77,6 +84,7 @@ export class AuthController {
    * bracket as the rest of this controller.
    */
   @Post('reactivate')
+  @ApiOperation({ summary: 'Ask for a deleted account back' })
   @Throttle(SENSITIVE)
   @HttpCode(HttpStatus.OK)
   reactivate(@Body() dto: ReactivateDto) {
@@ -84,6 +92,7 @@ export class AuthController {
   }
 
   @Post('reactivate/confirm')
+  @ApiOperation({ summary: 'Finish a reactivation with its 6-digit code' })
   @Throttle(SENSITIVE)
   @HttpCode(HttpStatus.OK)
   confirmReactivation(@Body() dto: ConfirmReactivationDto) {
@@ -91,6 +100,7 @@ export class AuthController {
   }
 
   @Post('forgot-password')
+  @ApiOperation({ summary: 'Start a password reset' })
   @Throttle(SENSITIVE)
   @HttpCode(HttpStatus.OK)
   forgotPassword(@Body() dto: ForgotPasswordDto) {
@@ -98,6 +108,7 @@ export class AuthController {
   }
 
   @Post('verify-reset-code')
+  @ApiOperation({ summary: 'Check a reset code without consuming it' })
   @Throttle(SENSITIVE)
   @HttpCode(HttpStatus.OK)
   verifyResetCode(@Body() dto: VerifyResetCodeDto) {
@@ -105,6 +116,7 @@ export class AuthController {
   }
 
   @Post('reset-password')
+  @ApiOperation({ summary: 'Set a new password with a reset code' })
   @Throttle(SENSITIVE)
   @HttpCode(HttpStatus.OK)
   resetPassword(@Body() dto: ResetPasswordDto) {

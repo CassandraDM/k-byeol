@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { setupSwagger } from './swagger';
 
 /**
  * Browser origins allowed to call the API. Native builds aren't subject to
@@ -42,6 +43,10 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
+
+  // After the pipes, so the document describes the API as it actually
+  // behaves — the validation rules the DTOs declare are part of the contract.
+  setupSwagger(app);
 
   // '::' is what Node binds when no host is given, and on Linux it is
   // dual-stack — IPv6 plus IPv4-mapped addresses. Passing '0.0.0.0' instead
