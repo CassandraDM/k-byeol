@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import { requireOptionalNativeModule } from 'expo-modules-core';
 
 import { API_URL } from '@/constants/api';
 import { useAuthStore } from '@/stores/auth-store';
@@ -127,15 +128,21 @@ export type ExportResult =
  * It is a native module: a static import runs `requireNativeModule` the moment
  * anything imports this file, and a client built before the dependency existed
  * does not have it — which took every screen importing this one down with it,
- * not just the export. Loaded here, a missing module is one button reporting
- * that it needs a rebuild, which is the truth and is survivable.
+ * not just the export.
+ *
+ * The presence check comes first and on purpose. Importing the package to find
+ * out would make expo-modules-core throw and log a red error before any of this
+ * code could see it — Metro's async require then resolves a half-built module
+ * rather than rejecting, so there is nothing to catch and nothing to hide.
+ * `requireOptionalNativeModule` answers the same question by returning null,
+ * quietly, which leaves one button saying the app needs a rebuild.
  */
 async function loadSharing(): Promise<typeof import('expo-sharing') | null> {
+  if (!requireOptionalNativeModule('ExpoSharing')) {
+    return null;
+  }
   try {
     const mod = await import('expo-sharing');
-    // Metro's async require does not reject when the native module is missing:
-    // it logs, and hands back a half-built module whose functions are
-    // undefined. So the shape is what gets checked, not the throw.
     return typeof mod?.isAvailableAsync === 'function' ? mod : null;
   } catch {
     return null;
